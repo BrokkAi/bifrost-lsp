@@ -1,0 +1,56 @@
+name: Release extension
+on:
+  workflow_dispatch:
+    inputs:
+      extension_version: { required: true, type: string }
+      server_version: { required: true, type: string }
+      minimum_server_version: { required: true, type: string }
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - run: gh release download "v${{ inputs.server_version }}" --repo "$GITHUB_REPOSITORY" --pattern 'bifrost-lsp-*' --dir dist
+        env: { GH_TOKEN: "${{ github.token }}" }
+      - run: node scripts/prepare-vscode-extension-manifest.mjs --extension-version "${{ inputs.extension_version }}" --server-version "${{ inputs.server_version }}" --minimum-server-version "${{ inputs.minimum_server_version }}" --manifest editors/vscode/package.json --dist dist
+      - run: npm ci --ignore-scripts && npm test && npx --no-install vsce package --out "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix"
+        working-directory: editors/vscode
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          {
+            name: qualified-vsix,
+            path: "bifrost-vscode-*.vsix",
+            if-no-files-found: error,
+          }
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
+        with:
+          {
+            subject-path: "bifrost-vscode-v${{ inputs.extension_version }}.vsix",
+          }
+  publish:
+    needs: qualify
+    environment: release
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - run: npm ci --ignore-scripts
+        working-directory: editors/vscode
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { name: qualified-vsix }
+      - run: npx --no-install vsce publish --packagePath "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix" --skip-duplicate
+        working-directory: editors/vscode
+        env: { VSCE_PAT: "${{ secrets.VSCE_PAT }}" }
+      - run: npx --no-install ovsx publish "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix" --skip-duplicate
+        working-directory: editors/vscode
+        env: { OVSX_PAT: "${{ secrets.OVSX_PAT }}" }
