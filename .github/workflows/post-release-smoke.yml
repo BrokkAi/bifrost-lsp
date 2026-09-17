@@ -9,24 +9,6 @@ jobs:
   marketplaces:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify Visual Studio Marketplace identity and archive
-        env: { VERSION: "${{ inputs.version }}" }
-        run: |
-          set -euo pipefail
-          jq -n '{filters:[{criteria:[{filterType:7,value:"brokk.bifrost-vscode"}],pageNumber:1,pageSize:1}],flags:914}' > query.json
-          curl --fail --silent --show-error --location -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=7.2-preview.1' --data-binary @query.json https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery > marketplace.json
-          jq -e --arg version "$VERSION" '[.results[0].extensions[0].versions[] | select(.version == $version)] | length == 1' marketplace.json
-          curl --fail --silent --show-error --location "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/brokk/vsextensions/bifrost-vscode/${VERSION}/vspackage" -o marketplace.vsix
-          unzip -tq marketplace.vsix
-      - name: Verify Open VSX identity, archive, and checksum
-        env: { VERSION: "${{ inputs.version }}" }
-        run: |
-          set -euo pipefail
-          endpoint="https://open-vsx.org/api/brokk/bifrost-vscode/${VERSION}"
-          curl --fail --silent --show-error --location "$endpoint" > open-vsx.json
-          url="$(jq -r '.files.download' open-vsx.json)"
-          curl --fail --silent --show-error --location "$url" -o open-vsx.vsix
-          expected="$(curl --fail --silent --show-error --location "$endpoint/file/brokk.bifrost-vscode-${VERSION}.sha256" | tr -d '[:space:]')"
-          actual="$(sha256sum open-vsx.vsix | cut -d ' ' -f 1)"
-          test "$expected" = "$actual"
-          unzip -tq open-vsx.vsix
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { persist-credentials: false }
+      - run: scripts/smoke-vscode-marketplaces.sh "${{ inputs.version }}"

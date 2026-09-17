@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
@@ -25,24 +26,23 @@ test("keeps extension, server, and engine compatibility versions independent", a
   await fs.mkdir(dist);
   await fs.writeFile(
     manifest,
-    `${JSON.stringify({ version: "0.11.4", bifrost: { engineCompatibility: ">=0.11 <1" } })}\n`,
+    `${JSON.stringify({ version: "0.12.0", bifrost: { serverVersion: "0.3.2", minimumServerVersion: "0.3.0", engineCompatibility: ">=0.11 <1" } })}\n`,
   );
   for (const target of SUPPORTED_TARGETS) {
     const suffix = target.includes("windows") ? ".zip" : ".tar.gz",
       archive = `bifrost-lsp-v0.3.2-${target}${suffix}`;
+    const contents = `archive for ${target}`;
+    await fs.writeFile(path.join(dist, archive), contents);
+    const hash = crypto.createHash("sha256").update(contents).digest("hex");
     await fs.writeFile(
       path.join(dist, `${archive}.sha256`),
-      `${"a".repeat(64)}  ${archive}\n`,
+      `${hash}  ${archive}\n`,
     );
   }
   await execFileAsync(process.execPath, [
     script,
-    "--extension-version",
-    "0.12.0",
-    "--server-version",
-    "0.3.2",
-    "--minimum-server-version",
-    "0.3.0",
+    "--release-tag",
+    "vscode-v0.12.0__server-v0.3.2__min-v0.3.0",
     "--dist",
     dist,
     "--manifest",
@@ -66,18 +66,73 @@ test("fails closed when a server checksum sidecar is missing", async () => {
   const dist = path.join(temp, "dist"),
     manifest = path.join(temp, "package.json");
   await fs.mkdir(dist);
-  await fs.writeFile(manifest, "{}\n");
+  await fs.writeFile(
+    manifest,
+    `${JSON.stringify({ version: "0.12.0", bifrost: { serverVersion: "0.3.2", minimumServerVersion: "0.3.0" } })}\n`,
+  );
   await assert.rejects(
     execFileAsync(process.execPath, [
       script,
-      "--extension-version",
-      "0.12.0",
-      "--server-version",
-      "0.3.2",
+      "--release-tag",
+      "vscode-v0.12.0__server-v0.3.2__min-v0.3.0",
       "--dist",
       dist,
       "--manifest",
       manifest,
     ]),
+  );
+});
+
+test("rejects a tag that disagrees with committed compatibility metadata", async () => {
+  const temp = await fs.mkdtemp(
+    path.join(os.tmpdir(), "bifrost-vscode-tag-test-"),
+  );
+  const manifest = path.join(temp, "package.json");
+  await fs.writeFile(
+    manifest,
+    `${JSON.stringify({ version: "0.12.0", bifrost: { serverVersion: "0.3.2", minimumServerVersion: "0.3.0" } })}\n`,
+  );
+  await assert.rejects(
+    execFileAsync(process.execPath, [
+      script,
+      "--release-tag",
+      "vscode-v0.12.1__server-v0.3.2__min-v0.3.0",
+      "--dist",
+      temp,
+      "--manifest",
+      manifest,
+    ]),
+    /version is 0\.12\.0/u,
+  );
+});
+
+test("rejects an archive that does not match its SHA-256 sidecar", async () => {
+  const temp = await fs.mkdtemp(
+    path.join(os.tmpdir(), "bifrost-vscode-hash-test-"),
+  );
+  const manifest = path.join(temp, "package.json");
+  await fs.writeFile(
+    manifest,
+    `${JSON.stringify({ version: "0.12.0", bifrost: { serverVersion: "0.3.2", minimumServerVersion: "0.3.0" } })}\n`,
+  );
+  const target = SUPPORTED_TARGETS[0],
+    suffix = target.includes("windows") ? ".zip" : ".tar.gz";
+  const archive = `bifrost-lsp-v0.3.2-${target}${suffix}`;
+  await fs.writeFile(path.join(temp, archive), "tampered");
+  await fs.writeFile(
+    path.join(temp, `${archive}.sha256`),
+    `${"a".repeat(64)}  ${archive}\n`,
+  );
+  await assert.rejects(
+    execFileAsync(process.execPath, [
+      script,
+      "--release-tag",
+      "vscode-v0.12.0__server-v0.3.2__min-v0.3.0",
+      "--dist",
+      temp,
+      "--manifest",
+      manifest,
+    ]),
+    /SHA-256 mismatch/u,
   );
 });
