@@ -1,0 +1,25 @@
+name: CI
+on:
+  pull_request:
+  push:
+permissions:
+  contents: read
+jobs:
+  vscode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: editors/vscode
+      - run: npm test
+        working-directory: editors/vscode
+      - run: npx --no-install vsce package --out ../../bifrost-vscode-ci.vsix
+        working-directory: editors/vscode
+      - run: unzip -tq bifrost-vscode-ci.vsix && unzip -Z1 bifrost-vscode-ci.vsix | grep -Fx extension/LICENSE.md && unzip -Z1 bifrost-vscode-ci.vsix | grep -Fx extension/THIRD_PARTY_LICENSES.txt

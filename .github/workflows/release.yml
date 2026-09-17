@@ -1,0 +1,56 @@
+name: Release extension
+on:
+  workflow_dispatch:
+    inputs:
+      extension_version: { required: true, type: string }
+      server_version: { required: true, type: string }
+      minimum_server_version: { required: true, type: string }
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: gh release download "v${{ inputs.server_version }}" --repo "$GITHUB_REPOSITORY" --pattern 'bifrost-lsp-*' --dir dist
+        env: { GH_TOKEN: "${{ github.token }}" }
+      - run: node scripts/prepare-vscode-extension-manifest.mjs --extension-version "${{ inputs.extension_version }}" --server-version "${{ inputs.server_version }}" --minimum-server-version "${{ inputs.minimum_server_version }}" --manifest editors/vscode/package.json --dist dist
+      - run: npm ci --ignore-scripts && npm test && npx --no-install vsce package --out "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix"
+        working-directory: editors/vscode
+      - uses: actions/upload-artifact@v4
+        with:
+          {
+            name: qualified-vsix,
+            path: "bifrost-vscode-*.vsix",
+            if-no-files-found: error,
+          }
+      - uses: actions/attest-build-provenance@v3
+        with:
+          {
+            subject-path: "bifrost-vscode-v${{ inputs.extension_version }}.vsix",
+          }
+  publish:
+    needs: qualify
+    environment: release
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --ignore-scripts
+        working-directory: editors/vscode
+      - uses: actions/download-artifact@v4
+        with: { name: qualified-vsix }
+      - run: npx --no-install vsce publish --packagePath "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix" --skip-duplicate
+        working-directory: editors/vscode
+        env: { VSCE_PAT: "${{ secrets.VSCE_PAT }}" }
+      - run: npx --no-install ovsx publish "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix" --skip-duplicate
+        working-directory: editors/vscode
+        env: { OVSX_PAT: "${{ secrets.OVSX_PAT }}" }
