@@ -1,10 +1,14 @@
 name: Release extension
 on:
+  push:
+    tags:
+      - "vscode-v*__server-v*__min-v*"
   workflow_dispatch:
     inputs:
-      extension_version: { required: true, type: string }
-      server_version: { required: true, type: string }
-      minimum_server_version: { required: true, type: string }
+      release_tag:
+        description: Existing release tag to retry
+        required: true
+        type: string
 permissions:
   contents: read
   id-token: write
@@ -12,15 +16,32 @@ permissions:
 jobs:
   qualify:
     runs-on: ubuntu-latest
+    outputs:
+      extension_version: ${{ steps.metadata.outputs.extension_version }}
+      vsix_name: ${{ steps.metadata.outputs.vsix_name }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with: { persist-credentials: false }
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'push' && github.ref || inputs.release_tag }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: { node-version: 22 }
-      - run: gh release download "v${{ inputs.server_version }}" --repo "$GITHUB_REPOSITORY" --pattern 'bifrost-lsp-*' --dir dist
-        env: { GH_TOKEN: "${{ github.token }}" }
-      - run: node scripts/prepare-vscode-extension-manifest.mjs --extension-version "${{ inputs.extension_version }}" --server-version "${{ inputs.server_version }}" --minimum-server-version "${{ inputs.minimum_server_version }}" --manifest editors/vscode/package.json --dist dist
-      - run: npm ci --ignore-scripts && npm test && npx --no-install vsce package --out "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix"
+      - name: Read and verify committed release metadata
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+        run: node scripts/prepare-vscode-extension-manifest.mjs --release-tag "$RELEASE_TAG" --manifest editors/vscode/package.json --dist dist --github-output "$GITHUB_OUTPUT" --metadata-only true
+      - name: Download standalone server release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SERVER_VERSION: ${{ steps.metadata.outputs.server_version }}
+        run: gh release download "v${SERVER_VERSION}" --repo "$GITHUB_REPOSITORY" --pattern 'bifrost-lsp-*' --dir dist
+      - name: Verify release metadata and server archives
+        id: verified-metadata
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+        run: node scripts/prepare-vscode-extension-manifest.mjs --release-tag "$RELEASE_TAG" --manifest editors/vscode/package.json --dist dist --github-output "$GITHUB_OUTPUT"
+      - run: npm ci --ignore-scripts && npm test && npx --no-install vsce package --out "../../${{ steps.verified-metadata.outputs.vsix_name }}"
         working-directory: editors/vscode
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -31,9 +52,7 @@ jobs:
           }
       - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
         with:
-          {
-            subject-path: "bifrost-vscode-v${{ inputs.extension_version }}.vsix",
-          }
+          { subject-path: "${{ steps.verified-metadata.outputs.vsix_name }}" }
   publish:
     needs: qualify
     environment: release
@@ -41,16 +60,29 @@ jobs:
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with: { persist-credentials: false }
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'push' && github.ref || inputs.release_tag }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: { node-version: 22 }
       - run: npm ci --ignore-scripts
         working-directory: editors/vscode
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with: { name: qualified-vsix }
-      - run: npx --no-install vsce publish --packagePath "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix" --skip-duplicate
+      - run: npx --no-install vsce publish --packagePath "../../${{ needs.qualify.outputs.vsix_name }}" --skip-duplicate
         working-directory: editors/vscode
         env: { VSCE_PAT: "${{ secrets.VSCE_PAT }}" }
-      - run: npx --no-install ovsx publish "../../bifrost-vscode-v${{ inputs.extension_version }}.vsix" --skip-duplicate
+      - run: npx --no-install ovsx publish "../../${{ needs.qualify.outputs.vsix_name }}" --skip-duplicate
         working-directory: editors/vscode
         env: { OVSX_PAT: "${{ secrets.OVSX_PAT }}" }
+  smoke:
+    needs: [qualify, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'push' && github.ref || inputs.release_tag }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { name: qualified-vsix }
+      - run: scripts/smoke-vscode-marketplaces.sh "${{ needs.qualify.outputs.extension_version }}" "${{ needs.qualify.outputs.vsix_name }}"
