@@ -96,6 +96,7 @@ import {
   validationDocument,
   validationRequest
 } from "./rql_validation";
+import { requireCompatibleBifrostServer } from "./compatibility";
 let client: LanguageClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
@@ -961,23 +962,40 @@ async function startClientInner(context: vscode.ExtensionContext): Promise<void>
   client = new LanguageClient("bifrost", "Bifrost", serverOptions, clientOptions);
   try {
     await client.start();
+    const engineCompatibility = requiredEngineCompatibility(context);
+    const serverIdentity = requireCompatibleBifrostServer(
+      client.initializeResult,
+      engineCompatibility
+    );
     const modeLabel = lastLaunchConfig?.label ?? "unknown";
     setStatus(
       "$(check) Bifrost",
       `Bifrost language server is running (${modeLabel}). Click to restart.`
     );
     setStatusCommand("bifrost.restartServer");
-    log("Bifrost language client started.");
+    log(
+      `Bifrost language client started with engine ${serverIdentity.engineVersion} and protocol ${serverIdentity.protocolVersion}.`
+    );
     for (const document of vscode.workspace.textDocuments) {
       rqlValidation?.schedule(validationDocument(document));
     }
   } catch (error) {
+    await client?.stop().catch(() => undefined);
     const message = formatError(error);
     setStatus("$(error) Bifrost", `${message}\n\nClick to retry.`);
     setStatusCommand("bifrost.startServer");
     log(`Bifrost language client failed to start: ${message}`);
     outputChannel?.show(true);
   }
+}
+
+function requiredEngineCompatibility(context: vscode.ExtensionContext): string {
+  const packageJson = context.extension.packageJSON as {
+    bifrost?: { engineCompatibility?: string };
+  };
+  const range = packageJson.bifrost?.engineCompatibility?.trim();
+  if (!range) throw new Error("Extension package metadata is missing bifrost.engineCompatibility.");
+  return range;
 }
 
 function trustedFormatterCommands(

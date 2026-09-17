@@ -30,3 +30,9 @@ External repository setup required before publishing:
 These credentials, namespace ownership, environment protection, and marketplace
 publisher transfer cannot be migrated in source code. No release is published
 by the repository's validation workflow.
+
+The extension fails closed unless the server's LSP `initialize` result contains
+`capabilities.experimental.bifrost` with protocol version `1` and an
+`engineVersion` inside `bifrost.engineCompatibility`. A standalone server
+release must implement this structured handshake before it can be selected by
+an enforcing extension release.

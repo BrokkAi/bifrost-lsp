@@ -387,6 +387,7 @@
     "watch": "node esbuild.mjs --watch",
     "test": "npm run format:check && npm run typecheck && npm run lint && npm run compile && npm run license:prepare && npm run test:unit",
     "test:unit": "npm run compile:test && node --test out-test/test/*.test.js",
+    "test:live-vscode": "npm run compile && node test/live/run-vscode-smoke.mjs && node test/live/run-vscode-smoke.mjs 1.0.0 --expect-rejection",
     "vscode:prepublish": "npm run compile && npm run license:prepare"
   },
   "dependencies": {
