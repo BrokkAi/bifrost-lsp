@@ -69,6 +69,12 @@ extracts the `bifrost-lsp` executable into VS Code global storage at
 declared compatible range after a successful install. Managed binaries are checked with
 `bifrost-lsp --version` before the language server starts.
 
+After LSP initialization, the extension also requires the server to advertise
+`capabilities.experimental.bifrost.protocolVersion` equal to `1` and a
+three-component `engineVersion` inside `bifrost.engineCompatibility`. Missing,
+malformed, unsupported, or out-of-range identities stop the client; the
+extension never infers compatibility from display text.
+
 ## Commands
 
 - `Bifrost: Start Language Server`
