@@ -57,7 +57,7 @@ jobs:
     needs: qualify
     environment: release
     runs-on: ubuntu-latest
-    permissions: { contents: read }
+    permissions: { contents: read, id-token: write }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -72,9 +72,8 @@ jobs:
       - run: npx --no-install vsce publish --packagePath "../../${{ needs.qualify.outputs.vsix_name }}" --skip-duplicate
         working-directory: editors/vscode
         env: { VSCE_PAT: "${{ secrets.VSCE_PAT }}" }
-      - run: npx --no-install ovsx publish "../../${{ needs.qualify.outputs.vsix_name }}" --skip-duplicate
+      - run: npx --no-install ovsx publish "../../${{ needs.qualify.outputs.vsix_name }}" --skip-duplicate --trusted-publishing
         working-directory: editors/vscode
-        env: { OVSX_PAT: "${{ secrets.OVSX_PAT }}" }
   smoke:
     needs: [qualify, publish]
     runs-on: ubuntu-latest

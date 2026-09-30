@@ -46,9 +46,14 @@ Never package again in a publish job.
 
 External repository setup required before publishing:
 
-- GitHub `release` environment with required reviewers and both secrets.
+- GitHub `release` environment with required reviewers and the `VSCE_PAT` secret.
 - `VSCE_PAT` authorized for Visual Studio Marketplace publisher `brokk`.
-- `OVSX_PAT` authorized for Open VSX namespace `brokk`.
+- An Open VSX trusted publisher for the existing `brokk.bifrost-vscode`
+  extension: provider **GitHub Actions**, organization **BrokkAi**, repository
+  **bifrost-lsp**, workflow filename **release.yml**, and environment **release**.
+  Register it at <https://open-vsx.org/user-settings/trusted-publishers> as a
+  namespace owner with a signed Publisher Agreement. Include the environment
+  so only jobs passing its protections can publish.
 - Repository Actions settings permitting build-provenance attestations and
   `id-token: write` for the release workflow.
 - A tag protection rule or ruleset restricting creation of
@@ -57,6 +62,17 @@ External repository setup required before publishing:
 These credentials, namespace ownership, environment protection, and marketplace
 publisher transfer cannot be migrated in source code. No release is published
 by the repository's validation workflow.
+
+Open VSX publication requires OIDC through `ovsx --trusted-publishing`; the
+publish job has `id-token: write` and does not receive an `OVSX_PAT` secret.
+See the [Open VSX trusted publishing documentation](https://github.com/eclipse-openvsx/openvsx/wiki/Trusted-Publishing).
+Configure the registration before the next extension release. After a real
+release succeeds through OIDC and passes the marketplace checksum smoke check,
+remove the unused GitHub `OVSX_PAT` secret and revoke its corresponding Open VSX
+token once every workflow using that token has migrated. Other repositories
+publishing this same extension must be retired or routed through this workflow:
+Open VSX allows only one trusted publisher per extension. Visual Studio
+Marketplace still uses its separate `VSCE_PAT`.
 
 The extension fails closed unless the server's LSP `initialize` result contains
 `capabilities.experimental.bifrost` with protocol version `1` and an
