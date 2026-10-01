@@ -79,3 +79,39 @@ The extension fails closed unless the server's LSP `initialize` result contains
 `engineVersion` inside `bifrost.engineCompatibility`. A standalone server
 release must implement this structured handshake before it can be selected by
 an enforcing extension release.
+
+## Server pack consumer prerequisite
+
+This checkout has no Rust server source, Cargo manifest, or server build
+workflow. The extension release workflow consumes existing standalone archives;
+it does not produce them. Bifrost-dev removed `crates/bifrost-lsp` in commit
+`4541130f99f9e428ff9b4db344f7cf1273a96768`. Its current `--lsp` and `--server lsp`
+commands report that the server moved out. Historical server code is a migration
+reference and requires adaptation and validation against the selected engine.
+
+Before qualifying a standalone server, locate or restore its producer and verify
+the following behavior with that executable:
+
+- `pack-engine-profile` prints the exact linked engine's JSON profile and exits
+  successfully without starting stdio LSP or opening a workspace. Use the
+  engine's profile API rather than reconstructing its version, build identity,
+  model digest, supported schemas, or capabilities in the server.
+- The profile's engine version agrees with
+  `capabilities.experimental.bifrost.engineVersion` in the LSP initialize result.
+- Before creating a workspace, the engine registers the native bundle selected
+  by `BIFROST_OPEN_SEMANTIC_PACK_BUNDLE` using
+  `BIFROST_SEMANTIC_PACK_CACHE_ROOT` for its catalog. Invalid or incompatible
+  explicitly selected content fails visibly rather than falling back to embedded
+  packs. The Bifrost facade's semantic-pack bootstrap is currently connected to
+  MCP workspace creation; a standalone LSP must connect its own workspace path.
+- Policy discovery and execution load the selected
+  `BIFROST_OPEN_POLICY_PACK_ROOT` through the engine's policy catalog API.
+- Integration tests demonstrate a meaningful semantic model and policy finding
+  from a compatible verified selection, offline reuse, rejection of incompatible
+  releases and corrupt content, and agreement between profile and handshake.
+
+The extension vendors the shared cache helper and release schema. Tests using
+synthetic qualified releases verify acquisition and cache integrity only; they
+do not qualify native semantic model decoding, policy execution, or actual LSP
+activation. Live activation additionally requires compatible qualified public
+rules and semantic-pack releases from BrokkAi/bifrost-packs.
