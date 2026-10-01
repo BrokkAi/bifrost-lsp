@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import path from "path";
 import type { LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
 import {
   CloseAction,
@@ -97,6 +98,7 @@ import {
   validationRequest
 } from "./rql_validation";
 import { requireCompatibleBifrostServer } from "./compatibility";
+import { prepareOpenPacksForServer, profileMatchesNegotiatedEngine } from "./open_packs";
 let client: LanguageClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
@@ -838,7 +840,10 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
   schedulePreparedManagedBinaryActivation(context);
 }
 
-async function startClientInner(context: vscode.ExtensionContext): Promise<void> {
+async function startClientInner(
+  context: vscode.ExtensionContext,
+  disableOpenPacks = false
+): Promise<void> {
   if (client?.state === State.Running || client?.state === State.Starting) {
     setStatus("$(check) Bifrost", "Bifrost language server is already running.");
     return;
@@ -883,7 +888,6 @@ async function startClientInner(context: vscode.ExtensionContext): Promise<void>
     return;
   }
 
-  lastLaunchConfig = launchConfig;
   try {
     await validateLaunchCommand(launchConfig);
   } catch (error) {
@@ -894,6 +898,44 @@ async function startClientInner(context: vscode.ExtensionContext): Promise<void>
     void vscode.window.showErrorMessage(`Bifrost: ${message}`);
     return;
   }
+
+  let openPacksEngineVersion: string | null = null;
+  let openPacksUnavailableReason: string | null = null;
+  if (!disableOpenPacks) {
+    setStatus("$(sync~spin) Bifrost", "Preparing Bifrost language server...");
+    try {
+      const openPacks = await prepareOpenPacksForServer({
+        command: launchConfig.command,
+        cwd: launchConfig.cwd,
+        env: launchConfig.env,
+        cacheDir: path.join(context.globalStorageUri.fsPath, "open-packs"),
+        helperPath: path.join(__dirname, "open-packs.mjs"),
+        offline: launchConfig.env.BIFROST_OPEN_PACKS_OFFLINE === "1",
+        refresh: launchConfig.env.BIFROST_OPEN_PACKS_REFRESH === "1"
+      });
+      if (openPacks.status === "unavailable" || !openPacks.engineVersion) {
+        openPacksUnavailableReason =
+          openPacks.diagnostic ?? "The server returned an unsupported engine profile.";
+      } else {
+        openPacksEngineVersion = openPacks.engineVersion;
+        launchConfig = {
+          ...launchConfig,
+          env: { ...launchConfig.env, ...openPacks.env }
+        };
+        log(
+          `Open semantic packs prepared for engine ${openPacks.engineVersion}; selection receipt: ${JSON.stringify(openPacks.receipt)}.`
+        );
+      }
+    } catch (error) {
+      const message = formatError(error);
+      setStatus("$(error) Bifrost", `Open semantic pack preparation failed: ${message}`);
+      log(`Open semantic pack preparation failed: ${message}`);
+      void vscode.window.showErrorMessage(`Bifrost open semantic packs: ${message}`);
+      return;
+    }
+  }
+
+  lastLaunchConfig = launchConfig;
 
   setStatus("$(sync~spin) Bifrost", "Starting Bifrost language server...");
   log(`Starting Bifrost language server using ${launchConfig.label} launch mode.`);
@@ -967,6 +1009,23 @@ async function startClientInner(context: vscode.ExtensionContext): Promise<void>
       client.initializeResult,
       engineCompatibility
     );
+    if (
+      openPacksEngineVersion &&
+      !profileMatchesNegotiatedEngine(openPacksEngineVersion, serverIdentity.engineVersion)
+    ) {
+      log(
+        `Open semantic packs are unavailable: probed engine profile ${openPacksEngineVersion} does not match negotiated engine ${serverIdentity.engineVersion}; restarting without the pack environment.`
+      );
+      await client.stop();
+      client = undefined;
+      await startClientInner(context, true);
+      return;
+    }
+    if (openPacksUnavailableReason) {
+      log(
+        `Open semantic packs are unavailable for engine ${serverIdentity.engineVersion}: ${openPacksUnavailableReason}`
+      );
+    }
     const modeLabel = lastLaunchConfig?.label ?? "unknown";
     setStatus(
       "$(check) Bifrost",

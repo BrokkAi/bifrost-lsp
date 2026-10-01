@@ -69,6 +69,35 @@ extracts the `bifrost-lsp` executable into VS Code global storage at
 declared compatible range after a successful install. Managed binaries are checked with
 `bifrost-lsp --version` before the language server starts.
 
+## Open semantic packs
+
+Before starting the language server, the extension runs
+`pack-engine-profile` on the selected server binary. A supported profile is
+passed unchanged to the shared open-pack cache helper, which selects and
+verifies public packs and supplies the native bundle, policy-pack, and
+semantic-cache roots to the server. After initialization, the extension checks
+that the profile's engine version matches the structured engine identity
+negotiated by the server. It never derives pack schemas or capabilities from
+`--version`.
+
+Server binaries without `pack-engine-profile` continue to start with their
+existing behavior. The **Output > Bifrost** channel reports that open semantic
+packs are unavailable for that engine. This includes the current packaged
+baseline until a compatible server release provides the profile command and
+cache environment facade. A pending pack qualification, missing compatible
+release, or unavailable release service also leaves the server running without
+pack environment variables. Profile execution or validation failures,
+malformed manifests, unsupported manifest schemas, and cache-integrity failures
+are reported as startup errors.
+
+The canonical helper and release schema are kept as external files in
+`out/open-packs.mjs` and `out/pack-release.schema.json`. The extension imports
+the helper as native ESM so its schema lookup via `import.meta.url` remains
+valid in the CommonJS extension bundle.
+
+Set `BIFROST_OPEN_PACKS_OFFLINE=1` in the VS Code process environment to use cached
+content only, or `BIFROST_OPEN_PACKS_REFRESH=1` to refresh the cached selection.
+
 After LSP initialization, the extension also requires the server to advertise
 `capabilities.experimental.bifrost.protocolVersion` equal to `1` and a
 three-component `engineVersion` inside `bifrost.engineCompatibility`. Missing,

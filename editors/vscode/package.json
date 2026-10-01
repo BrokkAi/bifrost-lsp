@@ -378,7 +378,7 @@
   "scripts": {
     "compile": "node esbuild.mjs",
     "license:prepare": "node ../../scripts/prepare-vscode-license-artifacts.mjs",
-    "compile:test": "tsc -p tsconfig.test.json",
+    "compile:test": "tsc -p tsconfig.test.json && node scripts/copy-open-packs.mjs out-test/src",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,mjs,md}\" \"syntaxes/*.json\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,mjs,md}\" \"syntaxes/*.json\"",
     "lint": "eslint src test esbuild.mjs eslint.config.mjs",
