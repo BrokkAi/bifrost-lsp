@@ -80,38 +80,62 @@ The extension fails closed unless the server's LSP `initialize` result contains
 release must implement this structured handshake before it can be selected by
 an enforcing extension release.
 
-## Server pack consumer prerequisite
+## Server build and engine API prerequisite
 
-This checkout has no Rust server source, Cargo manifest, or server build
-workflow. The extension release workflow consumes existing standalone archives;
-it does not produce them. Bifrost-dev removed `crates/bifrost-lsp` in commit
-`4541130f99f9e428ff9b4db344f7cf1273a96768`. Its current `--lsp` and `--server lsp`
-commands report that the server moved out. Historical server code is a migration
-reference and requires adaptation and validation against the selected engine.
+This repository owns the independent Rust `bifrost-lsp` 0.1.0 server, its
+orchestration, handlers, and integration tests. Its server qualification
+workflow builds a Linux archive for validation; it does not publish a server
+release. The extension release workflow consumes standalone server archives.
+Historical source provenance is recorded in [SOURCE.md](SOURCE.md).
 
-Before qualifying a standalone server, locate or restore its producer and verify
-the following behavior with that executable:
+The server implements the pack consumer contract: `pack-engine-profile` reports
+the exact linked engine profile, and that engine version is repeated in
+`capabilities.experimental.bifrost` during LSP initialize. Before a workspace is
+accepted, the server validates and bootstraps the explicitly selected semantic
+bundle using `BIFROST_OPEN_SEMANTIC_PACK_BUNDLE` and
+`BIFROST_SEMANTIC_PACK_CACHE_ROOT`. Invalid selected content fails visibly;
+there is no fallback to embedded packs. Policy listing and `bifrost/runPolicy`
+load `BIFROST_OPEN_POLICY_PACK_ROOT` through the engine's policy catalog API;
+`runPolicy` accepts the catalog's `policyId`. Integration tests cover actual
+semantic activation and offline reuse, selected policy execution, corrupt
+content, incompatible bundles, and profile/handshake agreement. Live extension
+activation still requires compatible qualified public policy and semantic-pack
+releases from BrokkAi/bifrost-packs.
 
-- `pack-engine-profile` prints the exact linked engine's JSON profile and exits
-  successfully without starting stdio LSP or opening a workspace. Use the
-  engine's profile API rather than reconstructing its version, build identity,
-  model digest, supported schemas, or capabilities in the server.
-- The profile's engine version agrees with
-  `capabilities.experimental.bifrost.engineVersion` in the LSP initialize result.
-- Before creating a workspace, the engine registers the native bundle selected
-  by `BIFROST_OPEN_SEMANTIC_PACK_BUNDLE` using
-  `BIFROST_SEMANTIC_PACK_CACHE_ROOT` for its catalog. Invalid or incompatible
-  explicitly selected content fails visibly rather than falling back to embedded
-  packs. The Bifrost facade's semantic-pack bootstrap is currently connected to
-  MCP workspace creation; a standalone LSP must connect its own workspace path.
-- Policy discovery and execution load the selected
-  `BIFROST_OPEN_POLICY_PACK_ROOT` through the engine's policy catalog API.
-- Integration tests demonstrate a meaningful semantic model and policy finding
-  from a compatible verified selection, offline reuse, rejection of incompatible
-  releases and corrupt content, and agreement between profile and handshake.
+The manifest pins the `brokk-bifrost` crate family to exactly 0.12.0, but the
+published 0.12.0 crates do not include the engine profile, selected-root, and current analyzer APIs
+used by this server. Therefore, the registry-only build is not currently a valid
+qualification path. A compatible public engine release must publish those APIs
+and the manifest's exact pins must be updated to that release before a default
+registry build can qualify. Until then, local development uses a clean engine
+checkout at revision `adef484da552bfc0896b057ae7efc2d53a671c9f`. Generate the
+ignored Cargo path override with Python 3.11 or newer from the repository root
+(the helper refuses a dirty engine checkout unless explicitly allowed):
 
-The extension vendors the shared cache helper and release schema. Tests using
-synthetic qualified releases verify acquisition and cache integrity only; they
-do not qualify native semantic model decoding, policy execution, or actual LSP
-activation. Live activation additionally requires compatible qualified public
-rules and semantic-pack releases from BrokkAi/bifrost-packs.
+```sh
+python3 scripts/configure-local-engine.py \
+  /path/to/bifrost-engine \
+  --expected-revision adef484da552bfc0896b057ae7efc2d53a671c9f
+```
+
+The script discovers `brokk-bifrost*` package manifests and writes their
+absolute paths to `.cargo/local-engine.toml`; it does not modify the engine
+checkout. With that local override present, the constrained host validation
+commands are:
+
+```sh
+JAVA_HOME= BIFROST_PARALLELISM=1 RAYON_NUM_THREADS=1 cargo --config .cargo/local-engine.toml check --all-targets
+JAVA_HOME= BIFROST_PARALLELISM=1 RAYON_NUM_THREADS=1 cargo nextest run --config .cargo/local-engine.toml --locked --max-fail 100
+JAVA_HOME= BIFROST_PARALLELISM=1 RAYON_NUM_THREADS=1 cargo clippy --config .cargo/local-engine.toml --all-targets --all-features -- -D warnings
+```
+
+For `cargo nextest` and `cargo clippy`, put the config after the subcommand so
+the nested Cargo invocation receives the local patch configuration.
+
+The local path override is machine-specific, ignored by Git, and must not be
+committed or used to claim that the public registry dependency is qualified.
+The first local check updates package provenance in `Cargo.lock`; subsequent
+local gates can use `--locked`. Keep that validation lock with the exact engine
+revision as evidence, and restore the committed registry lock before committing.
+Publishing or promoting a server release requires the published engine API
+prerequisite and the repository's release gates.

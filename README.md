@@ -1,9 +1,9 @@
 # Bifrost LSP
 
 This repository owns the existing `brokk.bifrost-vscode` extension and is the
-intended home of the standalone Bifrost language server. This checkout currently
-contains the extension and its release workflows; it does not yet contain Rust
-server source or a server build workflow. The extension remains published as
+standalone Bifrost language server. It contains the independent Rust
+`bifrost-lsp` 0.1.0 server, its request handlers and integration tests, alongside
+the extension and its release workflows. The extension remains published as
 `brokk/bifrost-vscode` on Open VSX.
 
 The first extension release from this repository is `0.12.0`, following the
@@ -17,10 +17,12 @@ exactly match the committed manifest.
 See [RELEASING.md](RELEASING.md) for qualification and external setup.
 
 Open semantic packs and policies come from
-[BrokkAi/bifrost-packs](https://github.com/BrokkAi/bifrost-packs). The extension
-probes the selected server's `pack-engine-profile` command, selects a compatible
-qualified release set, and verifies cached content before passing its roots to
-the server. Cache preparation alone does not establish that a server loads the
-selected content. The missing server producer must implement and verify the
-[pack consumer contract](RELEASING.md#server-pack-consumer-prerequisite) before
-the standalone server can be qualified.
+[BrokkAi/bifrost-packs](https://github.com/BrokkAi/bifrost-packs). The server
+reports the exact linked engine through `pack-engine-profile` and the LSP
+initialize result, validates explicitly selected semantic bundles before
+accepting a session, and bootstraps their semantic model in its workspace.
+Policy listing and `bifrost/runPolicy` resolve policy IDs through the selected
+policy catalog. The exact `brokk-bifrost` 0.12.0 crates on crates.io predate the
+profile, selected-root, and current analyzer APIs these behaviors require, so a default registry
+build cannot yet qualify the server. See the local engine build and publication
+prerequisite in [RELEASING.md](RELEASING.md#server-build-and-engine-api-prerequisite).
