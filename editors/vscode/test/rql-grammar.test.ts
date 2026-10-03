@@ -430,3 +430,40 @@ void test("highlights schema-v7 taint forms and retained-result references", asy
   assertScoped(tokens, "taint", "support.function.wrapper.bifrost-rql");
   assertScoped(tokens, ":taint-ref", "variable.parameter.role.bifrost-rql");
 });
+
+void test("highlights dependency configuration correlation", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    '(filter (correlate :relation (dependency-configuration :owner "topology-id" :ecosystem npm :version-ranges [">=1 <2"] :documents ["app.properties"] :overrides [] :values ["true"]) :code (dependency-evidence :ecosystem npm) :configuration (configuration-facts :format properties :key "mitigation.enabled")) :where ((mitigated eq false))) (dependency_configuration :version_ranges ["^1"] :value "true") (configuration-key :document "app.properties") (require-both)'
+  );
+  for (const form of [
+    "filter",
+    "correlate",
+    "dependency-configuration",
+    "dependency_configuration",
+    "dependency-evidence",
+    "configuration-facts",
+    "configuration-key",
+    "require-both"
+  ]) {
+    assertScoped(tokens, form, "support.function.wrapper.bifrost-rql");
+  }
+  for (const option of [
+    ":owner",
+    ":ecosystem",
+    ":version-ranges",
+    ":version_ranges",
+    ":documents",
+    ":document",
+    ":overrides",
+    ":values",
+    ":value",
+    ":code",
+    ":configuration",
+    ":format"
+  ]) {
+    assertScoped(tokens, option, "variable.parameter.role.bifrost-rql");
+  }
+  assertScoped(tokens, '"app.properties"', "string.quoted.double.bifrost-rql");
+  assertScoped(tokens, "false", "constant.language.boolean.bifrost-rql");
+});
