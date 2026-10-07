@@ -15,5 +15,9 @@
 ; Semicolons are comments only after whitespace, never inside a string.
 (call :callee (name "semi;colon")) ; trailing comment
 
+; New query-local Rust pointer provenance row operator.
+(rust-pointer-findings (procedure-of (language rust (function :name "run"))))
+(rust_pointer_findings (procedure_of (language rust (function :name "run"))))
+
 ; Unsupported values and unknown forms must remain safely tokenizable and plain.
 (custom_identifier :unexpected true false null 7

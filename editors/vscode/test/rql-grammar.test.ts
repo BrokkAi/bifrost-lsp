@@ -182,6 +182,8 @@ void test("tokenizes nested RQL structure, literals, and incomplete input", asyn
   );
   assertScoped(tokens, "(", "punctuation.section.brackets.bifrost-rql");
   assertScoped(tokens, "where", "support.function.wrapper.bifrost-rql");
+  assertScoped(tokens, "rust-pointer-findings", "support.function.wrapper.bifrost-rql");
+  assertScoped(tokens, "rust_pointer_findings", "support.function.wrapper.bifrost-rql");
   assertScoped(tokens, "call", "entity.name.type.kind.bifrost-rql");
   assertScoped(tokens, ":callee", "variable.parameter.role.bifrost-rql");
   assertScoped(tokens, "name/regex", "support.function.predicate.bifrost-rql");
