@@ -413,6 +413,16 @@ void test("highlights schema-v12 materialization forms and filter options", asyn
   }
 });
 
+void test("highlights Rust pointer provenance query forms", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    "(rust-pointer-findings (procedure-of (language rust (function)))) " +
+      "(rust_pointer_findings (procedure-of (language rust (function))))"
+  );
+  assertScoped(tokens, "rust-pointer-findings", "support.function.wrapper.bifrost-rql");
+  assertScoped(tokens, "rust_pointer_findings", "support.function.wrapper.bifrost-rql");
+});
+
 void test("highlights schema-v6 value-flow forms and plan references", async () => {
   const tokens = tokenizeGrammar(
     await grammar(),
