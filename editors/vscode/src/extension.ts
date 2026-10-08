@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import path from "path";
 import type { LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
 import {
   CloseAction,
@@ -24,12 +25,14 @@ import {
   buildMcpHostCommands,
   decideBifrostGitignorePrompt,
   formatError,
+  isDefaultLspCommand,
   parseExtraArgs,
   replaceLegacyBifrostGitignoreEntry,
   selectTrustedFormatterCommands,
   sourceFileWatchers,
   spawnBifrostServer,
   supportedWorkspaceRoot,
+  validateMcpCommand,
   validateLaunchCommand,
   workspaceGitignoreIncludesLegacyBifrostEntry
 } from "./lifecycle";
@@ -40,7 +43,8 @@ import {
   normalizeBinaryCompatibility,
   releaseAssetFor,
   releaseTargetFor,
-  selectManagedBinaryAndPreparePreferred
+  selectManagedBinaryAndPreparePreferred,
+  shouldPreparePreferredManagedBinary
 } from "./provisioning";
 import type { BinaryCompatibility, ManagedBinaryPreparation } from "./provisioning";
 import type {
@@ -97,6 +101,7 @@ import {
   validationRequest
 } from "./rql_validation";
 import { requireCompatibleBifrostServer } from "./compatibility";
+import { prepareOpenPacksForServer, profileMatchesNegotiatedEngine } from "./open_packs";
 let client: LanguageClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
@@ -112,6 +117,8 @@ let pendingManagedBinaryPreparation: ManagedBinaryPreparation | undefined;
 let extensionActive = false;
 const expectedPolicySuppressionWrite = new ExpectedPolicySuppressionWrite();
 const BIFROST_GITIGNORE_DECLINED_KEY_PREFIX = "bifrost.legacyGitignoreMigrationDeclined:";
+const MANAGED_SERVER_UPDATES_DISABLED_KEY = "bifrost.managedServerUpdatesDisabled";
+const MANAGED_SERVER_DEFERRED_VERSION_KEY = "bifrost.managedServerDeferredVersion";
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionActive = true;
@@ -838,7 +845,10 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
   schedulePreparedManagedBinaryActivation(context);
 }
 
-async function startClientInner(context: vscode.ExtensionContext): Promise<void> {
+async function startClientInner(
+  context: vscode.ExtensionContext,
+  disableOpenPacks = false
+): Promise<void> {
   if (client?.state === State.Running || client?.state === State.Starting) {
     setStatus("$(check) Bifrost", "Bifrost language server is already running.");
     return;
@@ -883,7 +893,6 @@ async function startClientInner(context: vscode.ExtensionContext): Promise<void>
     return;
   }
 
-  lastLaunchConfig = launchConfig;
   try {
     await validateLaunchCommand(launchConfig);
   } catch (error) {
@@ -894,6 +903,44 @@ async function startClientInner(context: vscode.ExtensionContext): Promise<void>
     void vscode.window.showErrorMessage(`Bifrost: ${message}`);
     return;
   }
+
+  let openPacksEngineVersion: string | null = null;
+  let openPacksUnavailableReason: string | null = null;
+  if (!disableOpenPacks) {
+    setStatus("$(sync~spin) Bifrost", "Preparing Bifrost language server...");
+    try {
+      const openPacks = await prepareOpenPacksForServer({
+        command: launchConfig.command,
+        cwd: launchConfig.cwd,
+        env: launchConfig.env,
+        cacheDir: path.join(context.globalStorageUri.fsPath, "open-packs"),
+        helperPath: path.join(__dirname, "open-packs.mjs"),
+        offline: launchConfig.env.BIFROST_OPEN_PACKS_OFFLINE === "1",
+        refresh: launchConfig.env.BIFROST_OPEN_PACKS_REFRESH === "1"
+      });
+      if (openPacks.status === "unavailable" || !openPacks.engineVersion) {
+        openPacksUnavailableReason =
+          openPacks.diagnostic ?? "The server returned an unsupported engine profile.";
+      } else {
+        openPacksEngineVersion = openPacks.engineVersion;
+        launchConfig = {
+          ...launchConfig,
+          env: { ...launchConfig.env, ...openPacks.env }
+        };
+        log(
+          `Open semantic packs prepared for engine ${openPacks.engineVersion}; selection receipt: ${JSON.stringify(openPacks.receipt)}.`
+        );
+      }
+    } catch (error) {
+      const message = formatError(error);
+      setStatus("$(error) Bifrost", `Open semantic pack preparation failed: ${message}`);
+      log(`Open semantic pack preparation failed: ${message}`);
+      void vscode.window.showErrorMessage(`Bifrost open semantic packs: ${message}`);
+      return;
+    }
+  }
+
+  lastLaunchConfig = launchConfig;
 
   setStatus("$(sync~spin) Bifrost", "Starting Bifrost language server...");
   log(`Starting Bifrost language server using ${launchConfig.label} launch mode.`);
@@ -967,6 +1014,23 @@ async function startClientInner(context: vscode.ExtensionContext): Promise<void>
       client.initializeResult,
       engineCompatibility
     );
+    if (
+      openPacksEngineVersion &&
+      !profileMatchesNegotiatedEngine(openPacksEngineVersion, serverIdentity.engineVersion)
+    ) {
+      log(
+        `Open semantic packs are unavailable: probed engine profile ${openPacksEngineVersion} does not match negotiated engine ${serverIdentity.engineVersion}; restarting without the pack environment.`
+      );
+      await client.stop();
+      client = undefined;
+      await startClientInner(context, true);
+      return;
+    }
+    if (openPacksUnavailableReason) {
+      log(
+        `Open semantic packs are unavailable for engine ${serverIdentity.engineVersion}: ${openPacksUnavailableReason}`
+      );
+    }
     const modeLabel = lastLaunchConfig?.label ?? "unknown";
     setStatus(
       "$(check) Bifrost",
@@ -1289,11 +1353,10 @@ async function resolveMcpConfig(context: vscode.ExtensionContext): Promise<Bifro
   }
 
   const config = vscode.workspace.getConfiguration("bifrost");
-  const command = config.get<string>("serverPath") || "bifrost";
-  const mode = config.get<LaunchMode>("launchMode") || "auto";
-  const managedBinary = await prepareManagedBinary(context, mode, command);
-  const managedBinaryPath = managedBinary?.selected.path ?? null;
-  return buildMcpConfig(root, context.extensionUri.fsPath, mode, command, managedBinaryPath);
+  const command = config.get<string>("mcpServerPath") || "bifrost";
+  const mcpConfig = buildMcpConfig(root, context.extensionUri.fsPath, command);
+  await validateMcpCommand(mcpConfig, root);
+  return mcpConfig;
 }
 
 async function copyText(text: string, label: string): Promise<void> {
@@ -1308,13 +1371,12 @@ async function prepareManagedBinary(
   configuredPath: string
 ): Promise<ManagedBinaryPreparation | null> {
   const configured = configuredPath.trim();
-  if (mode === "path" || (mode === "auto" && configured && configured !== "bifrost")) {
+  if (mode === "path" || (mode === "auto" && configured && !isDefaultLspCommand(configured))) {
     return null;
   }
 
   const compatibility = requiredBinaryCompatibility(context);
   const serverVersion = compatibility.serverVersion;
-  const archiveSha256 = requiredArchiveSha256(context, serverVersion);
   const storageDir = context.globalStorageUri.fsPath;
   try {
     releaseTargetFor();
@@ -1327,18 +1389,28 @@ async function prepareManagedBinary(
     return null;
   }
 
+  const allowPreferredPreparation = shouldPreparePreferredManagedBinary(
+    serverVersion,
+    context.globalState.get<boolean>(MANAGED_SERVER_UPDATES_DISABLED_KEY, false),
+    context.globalState.get<string>(MANAGED_SERVER_DEFERRED_VERSION_KEY)
+  );
+  if (!allowPreferredPreparation) {
+    log(`Managed Bifrost ${serverVersion} preferred update is suppressed by the user's policy.`);
+  }
   const managed = await selectManagedBinaryAndPreparePreferred(
     () => findCompatibleManagedBinary(storageDir, compatibility),
-    () => installManagedBinaryForContext(context, compatibility, archiveSha256),
+    allowPreferredPreparation
+      ? () =>
+          installManagedBinaryForContext(
+            context,
+            compatibility,
+            requiredArchiveSha256(context, serverVersion)
+          )
+      : null,
     log
   );
   if (!managed) {
-    const binaryPath = await promptAndInstallManagedBinary(
-      context,
-      mode,
-      compatibility,
-      archiveSha256
-    );
+    const binaryPath = await promptAndInstallManagedBinary(context, mode, compatibility);
     if (!binaryPath && mode === "bundled") {
       throw new Error(
         `Bifrost ${serverVersion} is not installed for ${process.platform}-${process.arch}.`
@@ -1388,15 +1460,17 @@ function schedulePreparedManagedBinaryActivation(context: vscode.ExtensionContex
 async function promptAndInstallManagedBinary(
   context: vscode.ExtensionContext,
   mode: LaunchMode,
-  compatibility: BinaryCompatibility,
-  archiveSha256: string
+  compatibility: BinaryCompatibility
 ): Promise<string | null> {
   const serverVersion = compatibility.serverVersion;
-  const disabledKey = "bifrost.managedServerUpdatesDisabled";
-  const deferredKey = "bifrost.managedServerDeferredVersion";
+  const disabledKey = MANAGED_SERVER_UPDATES_DISABLED_KEY;
+  const deferredKey = MANAGED_SERVER_DEFERRED_VERSION_KEY;
   if (
-    context.globalState.get<boolean>(disabledKey, false) ||
-    context.globalState.get<string>(deferredKey) === serverVersion
+    !shouldPreparePreferredManagedBinary(
+      serverVersion,
+      context.globalState.get<boolean>(disabledKey, false),
+      context.globalState.get<string>(deferredKey)
+    )
   ) {
     log(`Managed Bifrost ${serverVersion} update prompt is suppressed by the user's policy.`);
     return null;
@@ -1422,17 +1496,20 @@ async function promptAndInstallManagedBinary(
     return null;
   }
   await context.globalState.update(deferredKey, undefined);
-  return tryInstallManagedBinaryForMode(context, mode, compatibility, archiveSha256);
+  return tryInstallManagedBinaryForMode(context, mode, compatibility);
 }
 
 async function tryInstallManagedBinaryForMode(
   context: vscode.ExtensionContext,
   mode: LaunchMode,
-  compatibility: BinaryCompatibility,
-  archiveSha256: string
+  compatibility: BinaryCompatibility
 ): Promise<string | null> {
   try {
-    return await installManagedBinaryForContext(context, compatibility, archiveSha256);
+    return await installManagedBinaryForContext(
+      context,
+      compatibility,
+      requiredArchiveSha256(context, compatibility.serverVersion)
+    );
   } catch (error) {
     if (mode === "bundled") {
       throw error;

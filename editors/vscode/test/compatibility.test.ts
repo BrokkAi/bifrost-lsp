@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BIFROST_LSP_PROTOCOL_VERSION, requireCompatibleBifrostServer } from "../src/compatibility";
+import manifest from "../package.json";
 
 function result(engineVersion: string, protocolVersion = BIFROST_LSP_PROTOCOL_VERSION): unknown {
   return { capabilities: { experimental: { bifrost: { protocolVersion, engineVersion } } } };
@@ -28,4 +29,11 @@ void test("rejects missing identity, wrong protocol, and out-of-range engines", 
 void test("fails closed for malformed manifest ranges and server versions", () => {
   assert.throws(() => requireCompatibleBifrostServer(result("0.11"), ">=0.11.0 <1.0.0"));
   assert.throws(() => requireCompatibleBifrostServer(result("0.11.5"), "^0.11.0"));
+});
+
+void test("release manifest accepts the linked engine and rejects adjacent minor versions", () => {
+  const range = manifest.bifrost.engineCompatibility;
+  assert.equal(requireCompatibleBifrostServer(result("0.13.0"), range).engineVersion, "0.13.0");
+  assert.throws(() => requireCompatibleBifrostServer(result("0.12.0"), range), /incompatible/);
+  assert.throws(() => requireCompatibleBifrostServer(result("0.14.0"), range), /incompatible/);
 });

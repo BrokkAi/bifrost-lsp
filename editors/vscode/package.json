@@ -6,7 +6,7 @@
   "bifrost": {
     "serverVersion": "0.1.0",
     "minimumServerVersion": "0.1.0",
-    "engineCompatibility": ">=0.11.0 <1.0.0",
+    "engineCompatibility": ">=0.13.0 <0.14.0",
     "allowPrerelease": false,
     "archiveSha256": {}
   },
@@ -121,16 +121,21 @@
             "path"
           ],
           "enumDescriptions": [
-            "Auto-detect a configured path, bundled binary, local development binary, or PATH binary.",
-            "Use the Bifrost binary bundled with the extension.",
-            "Use bifrost.serverPath, or the bifrost command on PATH when no path is configured."
+            "Use an explicit server path, a verified extension-managed server, a local development build, or a PATH binary.",
+            "Require a verified extension-managed standalone language server.",
+            "Use bifrost.serverPath as an exact path or command name."
           ],
           "description": "How to start the Bifrost language server."
         },
         "bifrost.serverPath": {
           "type": "string",
+          "default": "bifrost-lsp",
+          "description": "Path to an external LSP server, or the command name to resolve on PATH. The default auto mode installs the extension-managed bifrost-lsp server."
+        },
+        "bifrost.mcpServerPath": {
+          "type": "string",
           "default": "bifrost",
-          "description": "Path to the bifrost binary, or the command name to resolve on PATH."
+          "description": "Path or command name for the separate Bifrost CLI used by MCP setup. The managed language server supports LSP only."
         },
         "bifrost.debug": {
           "type": "boolean",
@@ -378,7 +383,7 @@
   "scripts": {
     "compile": "node esbuild.mjs",
     "license:prepare": "node ../../scripts/prepare-vscode-license-artifacts.mjs",
-    "compile:test": "tsc -p tsconfig.test.json",
+    "compile:test": "tsc -p tsconfig.test.json && node scripts/copy-open-packs.mjs out-test/src",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,mjs,md}\" \"syntaxes/*.json\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,mjs,md}\" \"syntaxes/*.json\"",
     "lint": "eslint src test esbuild.mjs eslint.config.mjs",

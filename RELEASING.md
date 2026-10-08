@@ -79,3 +79,71 @@ The extension fails closed unless the server's LSP `initialize` result contains
 `engineVersion` inside `bifrost.engineCompatibility`. A standalone server
 release must implement this structured handshake before it can be selected by
 an enforcing extension release.
+
+## Server build and release
+
+The standalone server version is `0.1.0`, independent of the extension version
+`0.12.0` and the linked Bifrost engine `0.13.0`. All Bifrost dependencies are
+exact public crates.io pins. Default builds must use the committed registry
+lockfile without `.cargo/local-engine.toml` or a sibling engine checkout.
+
+The engine is linked into `bifrost-lsp`; installing a standalone server installs
+that release's engine too. There is no runtime switch to an arbitrary engine.
+The extension selects its preferred server from committed release metadata,
+checks the archive against both its release sidecar and the hash pinned into
+the VSIX, and installs it in versioned editor global storage. A compatible
+cached server starts offline; a preferred server can be prepared in the
+background when update policy allows it. Explicit `bifrost.serverPath` and
+`path` launch mode remain available for development and external installs.
+The engine compatibility range for this extension is `>=0.13.0 <0.14.0`;
+initialization must report protocol `1` and the actual linked engine version.
+
+Local qualification:
+
+```sh
+cargo fmt --check
+JAVA_HOME= CARGO_BUILD_JOBS=2 cargo check --locked --all-targets
+JAVA_HOME= CARGO_BUILD_JOBS=2 cargo nextest run --locked --test-threads 2
+JAVA_HOME= CARGO_BUILD_JOBS=2 cargo clippy --locked --all-targets --all-features -- -D warnings
+```
+
+CI performs registry-only Rust checks and extension validation. The server
+qualification workflow provides a Linux archive without publishing. The server
+release workflow can also run its complete matrix with `qualify_only` enabled
+and an exact source commit, without creating a release. The server
+release workflow builds the five targets consumed by the extension: universal
+macOS, Linux x86_64/aarch64, and Windows x86_64/aarch64. It requires the server
+tag to match `Cargo.toml`, qualifies binaries and engine profiles, and gates
+publication on the complete archive/checksum set. Publication uses the protected
+`release` environment. Do not bypass its approval controls.
+
+Release in this order:
+
+1. Merge the validated server/extension changes after exact-head CI passes.
+2. Create an annotated `v0.1.0` server tag at the qualified commit and run the
+   server release workflow. Verify all five assets and checksum sidecars exist.
+3. Create the extension tag
+   `vscode-v0.12.0__server-v0.1.0__min-v0.1.0`. Its workflow injects hashes from
+   the server release into the qualified VSIX before publication.
+4. Verify both marketplace copies against the qualified VSIX, then install in
+   a clean editor profile and smoke the managed download, LSP initialize,
+   navigation, offline restart, and update behavior.
+
+The server implements the pack consumer contract: `pack-engine-profile` reports
+the linked engine profile, and the same version appears in the initialize
+result. Before accepting a workspace it validates and bootstraps the selected
+semantic bundle using `BIFROST_OPEN_SEMANTIC_PACK_BUNDLE` and
+`BIFROST_SEMANTIC_PACK_CACHE_ROOT`. Invalid selected content fails visibly.
+Policy listing and `bifrost/runPolicy` load `BIFROST_OPEN_POLICY_PACK_ROOT`
+through the engine catalog. Integration tests cover semantic activation and
+offline reuse, selected policy execution, corrupt content, incompatible
+bundles, and profile/handshake agreement. Live pack activation additionally
+requires a compatible qualified public release from BrokkAi/bifrost-packs;
+unavailable packs remain visible as unavailable.
+
+The standalone server implements LSP. MCP setup requires a separate `bifrost`
+CLI installation; it must never generate MCP commands for `bifrost-lsp`.
+
+Historical local engine development and imported public source provenance are
+recorded in [SOURCE.md](SOURCE.md). The ignored local override helper remains
+available for development, but it is not a release qualification path.
