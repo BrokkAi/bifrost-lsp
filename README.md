@@ -2,7 +2,7 @@
 
 This repository owns the existing `brokk.bifrost-vscode` extension and is the
 standalone Bifrost language server. It contains the independent Rust
-`bifrost-lsp` 0.1.0 server, its request handlers and integration tests, alongside
+`bifrost-lsp` 0.1.1 server, its request handlers and integration tests, alongside
 the extension and its release workflows. The extension remains published as
 `brokk/bifrost-vscode` on Open VSX.
 

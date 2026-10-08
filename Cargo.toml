@@ -1,6 +1,6 @@
 [package]
 name = "brokk-bifrost-lsp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.97"
 description = "Standalone Bifrost language server"

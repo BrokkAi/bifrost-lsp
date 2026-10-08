@@ -23,7 +23,7 @@ vscode-v<extension>__server-v<server>__min-v<minimum>
 ```
 
 For example, the current manifest would use
-`vscode-v0.12.0__server-v0.1.0__min-v0.1.0`. Each field must be a complete
+`vscode-v0.12.0__server-v0.1.1__min-v0.1.1`. Each field must be a complete
 semantic version. The workflow checks out the tag and rejects it unless all
 three values exactly match the committed manifest. Do not create a tag until
 the corresponding standalone `v<server>` GitHub release contains every
@@ -82,7 +82,7 @@ an enforcing extension release.
 
 ## Server build and release
 
-The standalone server version is `0.1.0`, independent of the extension version
+The standalone server version is `0.1.1`, independent of the extension version
 `0.12.0` and the linked Bifrost engine `0.13.0`. All Bifrost dependencies are
 exact public crates.io pins. Default builds must use the committed registry
 lockfile without `.cargo/local-engine.toml` or a sibling engine checkout.
@@ -120,10 +120,10 @@ publication on the complete archive/checksum set. Publication uses the protected
 Release in this order:
 
 1. Merge the validated server/extension changes after exact-head CI passes.
-2. Create an annotated `v0.1.0` server tag at the qualified commit and run the
+2. Create an annotated `v0.1.1` server tag at the qualified commit and run the
    server release workflow. Verify all five assets and checksum sidecars exist.
 3. Create the extension tag
-   `vscode-v0.12.0__server-v0.1.0__min-v0.1.0`. Its workflow injects hashes from
+   `vscode-v0.12.0__server-v0.1.1__min-v0.1.1`. Its workflow injects hashes from
    the server release into the qualified VSIX before publication.
 4. Verify both marketplace copies against the qualified VSIX, then install in
    a clean editor profile and smoke the managed download, LSP initialize,
