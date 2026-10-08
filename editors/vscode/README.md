@@ -120,7 +120,7 @@ language server.
 Build the Bifrost server from the repository root:
 
 ```bash
-cargo build --bin bifrost
+cargo build --locked --bin bifrost-lsp
 ```
 
 Install and compile the extension:
@@ -139,7 +139,7 @@ repository formatting rules and `npm run lint:fix` for safe ESLint fixes.
 
 Open `editors/vscode` in VS Code, run the extension in an Extension
 Development Host, and open a workspace with a supported source file. For local
-development, either rely on the auto-detected `target/debug/bifrost` binary or
+development, either rely on the auto-detected `target/debug/bifrost-lsp` binary or
 set:
 
 ```json
@@ -163,7 +163,7 @@ be running and indexed; the button does not start or wait for it.
 The extension starts Bifrost with:
 
 ```bash
-bifrost --root <workspace-root> --lsp
+bifrost-lsp --root <workspace-root> --lsp
 ```
 
 `--root` is the fallback root. VS Code still sends active workspace folders
