@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 
-const engineVersion = process.env.BIFROST_FAKE_ENGINE_VERSION ?? "0.11.5";
+const engineVersion = process.env.BIFROST_FAKE_ENGINE_VERSION ?? "0.13.0";
 const marker = process.env.BIFROST_FAKE_MARKER;
 const shutdownMarker = process.env.BIFROST_FAKE_SHUTDOWN_MARKER;
+if (process.argv[2] === "pack-engine-profile") {
+  console.error("unknown argument 'pack-engine-profile'");
+  process.exit(1);
+}
 let buffer = Buffer.alloc(0);
 
 process.stdin.on("data", (chunk) => {

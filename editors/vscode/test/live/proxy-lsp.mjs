@@ -7,11 +7,13 @@ const marker = process.env.BIFROST_FAKE_MARKER;
 if (!server) throw new Error("BIFROST_LIVE_SERVER is required");
 
 const child = spawn(server, process.argv.slice(2), { stdio: ["pipe", "pipe", "inherit"] });
+const utility = process.argv[2] === "pack-engine-profile";
 let buffer = Buffer.alloc(0);
 
 process.stdin.pipe(child.stdin);
 child.stdout.on("data", (chunk) => {
   process.stdout.write(chunk);
+  if (utility) return;
   buffer = Buffer.concat([buffer, chunk]);
   while (true) {
     const headerEnd = buffer.indexOf("\r\n\r\n");

@@ -82,9 +82,13 @@ void test("parses and validates SHA-256 sidecars", () => {
     () => provisioning.parseSha256(`${hash}  other-file\n`, "bifrost-lsp-v0.6.8-target.tar.gz"),
     /No SHA-256 checksum/
   );
+  assert.throws(
+    () => provisioning.parseSha256(`${hash}\n`, "bifrost-lsp-v0.6.8-target.tar.gz"),
+    /No SHA-256 checksum/
+  );
 });
 
-void test("installs verified binary and preserves compatible managed versions", async () => {
+void test("installs a probed binary and preserves existing managed versions", async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "bifrost-lsp-vscode-test-"));
   const oldDir = path.join(temp, "binaries", "0.6.7", "linux-x64");
   fs.mkdirSync(oldDir, { recursive: true });
@@ -119,13 +123,14 @@ void test("installs verified binary and preserves compatible managed versions", 
     expectedSha256: checksum,
     platform: "linux",
     arch: "x64",
-    fetchImpl
+    fetchImpl,
+    probeImpl: () => Promise.resolve({ version: "0.6.8", rawOutput: "" })
   });
 
   assert.equal(installed, path.join(temp, "binaries", "0.6.8", "linux-x64", "bifrost-lsp"));
   assert.equal(fs.readFileSync(installed, "utf8"), "new-binary");
   assert.equal(fs.existsSync(path.join(temp, "binaries", "0.6.7")), true);
-  assert.equal(fs.existsSync(path.join(temp, "binaries", "0.5.9")), false);
+  assert.equal(fs.existsSync(path.join(temp, "binaries", "0.5.9")), true);
 });
 
 void test("selects exact then newest compatible managed binaries", async () => {
@@ -266,6 +271,25 @@ void test("keeps the compatible binary active when preferred preparation fails",
   assert.deepEqual(messages, ["Preferred managed Bifrost preparation failed: release unavailable"]);
 });
 
+void test("does not prepare a preferred binary when managed updates are suppressed", async () => {
+  const preparation = await provisioning.selectManagedBinaryAndPreparePreferred(
+    () =>
+      Promise.resolve({
+        path: "/managed/0.9.1/bifrost-lsp",
+        version: "0.9.1",
+        compatibilityMode: "compatible"
+      }),
+    null,
+    () => undefined
+  );
+
+  assert.ok(preparation);
+  assert.equal(preparation.preferredInstall, null);
+  assert.equal(provisioning.shouldPreparePreferredManagedBinary("0.9.4", true), false);
+  assert.equal(provisioning.shouldPreparePreferredManagedBinary("0.9.4", false, "0.9.4"), false);
+  assert.equal(provisioning.shouldPreparePreferredManagedBinary("0.9.4", false), true);
+});
+
 void test("does not replace a server that moved on before preferred preparation completed", async () => {
   const preparation = await provisioning.selectManagedBinaryAndPreparePreferred(
     () =>
@@ -370,9 +394,53 @@ void test("rejects archive bytes that do not match the pinned checksum", async (
   );
 });
 
+void test("does not publish an installed binary when its version probe mismatches", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "bifrost-lsp-vscode-test-"));
+  const existingDir = path.join(temp, "binaries", "0.6.7", "linux-x64");
+  fs.mkdirSync(existingDir, { recursive: true });
+  fs.writeFileSync(path.join(existingDir, "bifrost-lsp"), "rollback");
+
+  const archiveName = "bifrost-lsp-v0.6.8-x86_64-unknown-linux-gnu.tar.gz";
+  const stage = "bifrost-lsp-v0.6.8-x86_64-unknown-linux-gnu";
+  const releaseDir = path.join(temp, "release");
+  const stageDir = path.join(releaseDir, stage);
+  const archivePath = path.join(temp, archiveName);
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, "bifrost-lsp"), "wrong-version-binary");
+  tar.c({ gzip: true, file: archivePath, cwd: releaseDir, sync: true }, [stage]);
+
+  const archive = fs.readFileSync(archivePath);
+  const checksum = provisioning.sha256(archive);
+  const fetchImpl: typeof fetch = (url) => {
+    if (requestUrl(url).endsWith(".sha256")) {
+      return Promise.resolve(new Response(`${checksum}  ${archiveName}\n`));
+    }
+    return Promise.resolve(new Response(archive));
+  };
+
+  await assert.rejects(
+    provisioning.installManagedBinary({
+      storageDir: temp,
+      version: "0.6.8",
+      expectedSha256: checksum,
+      platform: "linux",
+      arch: "x64",
+      fetchImpl,
+      probeImpl: () => Promise.resolve({ version: "0.6.7", rawOutput: "" })
+    }),
+    /Installed Bifrost 0\.6\.8 reported 0\.6\.7/
+  );
+  assert.equal(
+    fs.existsSync(path.join(temp, "binaries", "0.6.8", "linux-x64", "bifrost-lsp")),
+    false
+  );
+  assert.equal(fs.readFileSync(path.join(existingDir, "bifrost-lsp"), "utf8"), "rollback");
+});
+
 void test("resolves launch mode precedence", () => {
   assert.equal(lifecycle.resolveLaunchMode("auto", "/tmp/bifrost", "/managed/bifrost"), "path");
   assert.equal(lifecycle.resolveLaunchMode("auto", "bifrost", "/managed/bifrost"), "managed");
+  assert.equal(lifecycle.resolveLaunchMode("auto", "bifrost-lsp", "/managed/bifrost"), "managed");
   assert.equal(lifecycle.resolveLaunchMode("auto", "bifrost", null), "path");
   assert.equal(lifecycle.resolveLaunchMode("bundled", "bifrost", null), "managed");
   assert.equal(lifecycle.resolveLaunchMode("path", "bifrost", "/managed/bifrost"), "path");
@@ -396,18 +464,28 @@ void test("builds managed launch config when bundled mode has an installed binar
   assert.equal(config.env.BIFROST_LSP_SLOW_MS, "123");
 });
 
-void test("builds managed MCP config with searchtools toolset", () => {
-  const config = lifecycle.buildMcpConfig(
+void test("path mode preserves the explicitly configured bifrost command", () => {
+  const config = lifecycle.buildLaunchConfig(
     "/workspace",
     "/extension",
-    "bundled",
+    "path",
     "bifrost",
-    "/managed/bifrost"
+    [],
+    false,
+    2000,
+    null
   );
+
+  assert.equal(config.command, "bifrost");
+  assert.equal(config.label, "path");
+});
+
+void test("builds MCP config from the independent Bifrost CLI", () => {
+  const config = lifecycle.buildMcpConfig("/workspace", "/extension", "bifrost");
   assert.deepEqual(config, {
     mcpServers: {
       bifrost: {
-        command: "/managed/bifrost",
+        command: "bifrost",
         args: ["--root", "/workspace", "--mcp", "searchtools"]
       }
     }
@@ -415,13 +493,7 @@ void test("builds managed MCP config with searchtools toolset", () => {
 });
 
 void test("builds path MCP config from configured server path", () => {
-  const config = lifecycle.buildMcpConfig(
-    "/workspace",
-    "/extension",
-    "path",
-    "/custom/bin/bifrost",
-    null
-  );
+  const config = lifecycle.buildMcpConfig("/workspace", "/extension", "/custom/bin/bifrost");
   assert.deepEqual(config.mcpServers.bifrost, {
     command: "/custom/bin/bifrost",
     args: ["--root", "/workspace", "--mcp", "searchtools"]
@@ -451,11 +523,47 @@ void test("builds path MCP config from local development binary", () => {
   fs.mkdirSync(extensionDir, { recursive: true });
   fs.writeFileSync(binaryPath, "binary");
 
-  const config = lifecycle.buildMcpConfig("/workspace", extensionDir, "path", "bifrost", null);
+  const config = lifecycle.buildMcpConfig("/workspace", extensionDir, "bifrost");
   assert.deepEqual(config.mcpServers.bifrost, {
     command: binaryPath,
     args: ["--root", "/workspace", "--mcp", "searchtools"]
   });
+});
+
+void test("prefers the standalone local LSP binary for LSP launch fallback", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "bifrost-lsp-vscode-test-"));
+  const extensionDir = path.join(temp, "editors", "vscode");
+  const binaryPath = path.join(
+    temp,
+    "target",
+    "debug",
+    process.platform === "win32" ? "bifrost-lsp.exe" : "bifrost-lsp"
+  );
+  fs.mkdirSync(path.dirname(binaryPath), { recursive: true });
+  fs.mkdirSync(extensionDir, { recursive: true });
+  fs.writeFileSync(binaryPath, "binary");
+
+  const config = lifecycle.buildLaunchConfig(
+    "/workspace",
+    extensionDir,
+    "auto",
+    "bifrost",
+    [],
+    false,
+    2000,
+    null
+  );
+  assert.equal(config.command, binaryPath);
+});
+
+void test("reports an actionable error when the MCP CLI is unavailable", async () => {
+  const config = lifecycle.buildMcpConfig("/workspace", "/extension", "bifrost");
+  await assert.rejects(
+    lifecycle.validateMcpCommand(config, "/workspace", {
+      PATH: fs.mkdtempSync(path.join(os.tmpdir(), "bifrost-empty-path-"))
+    }),
+    /Bifrost MCP CLI "bifrost" was not found on PATH.*cannot provide MCP/
+  );
 });
 
 void test("validates configured absolute launch command before startup", async () => {

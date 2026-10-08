@@ -1,0 +1,78 @@
+name: Server qualification
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact source commit to qualify (full 40-character SHA)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      JAVA_HOME: ""
+      RUST_TEST_THREADS: "2"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_commit }}
+      - name: Require immutable source revision
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: '[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - name: Read package version
+        id: metadata
+        run: node scripts/validate-server-release.mjs --cargo-manifest Cargo.toml --metadata-only true --github-output "$GITHUB_OUTPUT"
+      - run: cargo fmt --check
+      - run: node --test scripts/server-release.test.mjs scripts/prepare-vscode-extension-manifest.test.mjs
+      - run: cargo check --locked --all-targets
+      - run: cargo test --locked --test bifrost_lsp_server
+      - run: cargo test --locked --test pack_engine_integration
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo build --locked --release --bin bifrost-lsp
+      - name: Verify native server utilities
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          mkdir -p evidence
+          target/release/bifrost-lsp pack-engine-profile > evidence/engine-profile.json
+          target/release/bifrost-lsp --version > evidence/server-version.txt
+          source_commit=$(git rev-parse HEAD)
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          printf '%s\n' "$source_commit" > evidence/source-commit.txt
+          cp Cargo.lock evidence/Cargo.lock
+          cat > evidence/target.json <<EOF
+          {"rust_targets":["x86_64-unknown-linux-gnu"],"release_target":"x86_64-unknown-linux-gnu","runner":"ubuntu-latest"}
+          EOF
+          node scripts/validate-server-evidence.mjs \
+            --cargo-manifest Cargo.toml \
+            --profile evidence/engine-profile.json \
+            --version-output evidence/server-version.txt \
+            --target-identity evidence/target.json \
+            --source-commit evidence/source-commit.txt \
+            --cargo-lock evidence/Cargo.lock \
+            --rust-targets x86_64-unknown-linux-gnu \
+            --release-target x86_64-unknown-linux-gnu
+      - name: Package qualification artifact and evidence
+        run: |
+          mkdir -p dist
+          node scripts/package-server-release.mjs \
+            --version "${{ steps.metadata.outputs.version }}" \
+            --target x86_64-unknown-linux-gnu \
+            --binary target/release/bifrost-lsp \
+            --license LICENSE \
+            --dist dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bifrost-lsp-linux-qualification
+          path: |
+            dist/
+            evidence/
+          if-no-files-found: error
