@@ -36,6 +36,7 @@ export interface InstallOptions extends PlatformSpec {
   allowPrerelease?: boolean;
   expectedSha256: string;
   fetchImpl?: typeof fetch;
+  probeImpl?: (binaryPath: string) => Promise<VersionProbe>;
   log?: (message: string) => void;
 }
 
@@ -63,14 +64,14 @@ export interface ManagedBinaryPreparation {
 
 export async function selectManagedBinaryAndPreparePreferred(
   findSelection: () => Promise<ManagedBinarySelection | null>,
-  installPreferred: () => Promise<string>,
+  installPreferred: (() => Promise<string>) | null,
   log: (message: string) => void
 ): Promise<ManagedBinaryPreparation | null> {
   const selected = await findSelection();
   if (!selected) {
     return null;
   }
-  if (selected.compatibilityMode === "exact") {
+  if (selected.compatibilityMode === "exact" || !installPreferred) {
     return { selected, preferredInstall: null };
   }
 
@@ -94,6 +95,17 @@ export async function activatePreparedManagedBinary(
   }
   await activate(preferredPath);
   return true;
+}
+
+export function shouldPreparePreferredManagedBinary(
+  preferredVersion: string,
+  updatesDisabled: boolean,
+  deferredVersion?: string
+): boolean {
+  return (
+    !updatesDisabled &&
+    normalizeVersion(deferredVersion ?? "") !== normalizeVersion(preferredVersion)
+  );
 }
 
 export function releaseTargetFor(
@@ -291,12 +303,16 @@ export async function installManagedBinary(options: InstallOptions): Promise<str
     if (options.platform !== "win32") {
       await fs.chmod(tmpDestination, 0o755);
     }
+
+    const probe = await (options.probeImpl ?? probeBifrostVersion)(tmpDestination);
+    const expectedVersion = normalizeVersion(options.version);
+    if (probe.version !== expectedVersion) {
+      throw new Error(
+        `Installed Bifrost ${options.version} reported ${probe.version ?? "no version"}.`
+      );
+    }
+
     await fs.rename(tmpDestination, destination);
-    await cleanupOldManagedVersions(options.storageDir, {
-      serverVersion: options.version,
-      minimumServerVersion: options.minimumServerVersion ?? options.version,
-      allowPrerelease: options.allowPrerelease ?? false
-    });
     log(`Installed Bifrost ${options.version} at ${destination}`);
     return destination;
   } finally {
@@ -341,7 +357,7 @@ export function parseSha256(text: string, expectedName?: string): string {
     }
     const hash = match[1].toLowerCase();
     const name = match[2]?.trim();
-    if (!expectedName || !name || path.basename(name) === expectedName) {
+    if (!expectedName || (name && path.basename(name) === expectedName)) {
       return hash;
     }
   }

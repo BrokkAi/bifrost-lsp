@@ -7,6 +7,12 @@ import * as vscode from "vscode";
 export type LaunchMode = "auto" | "bundled" | "path";
 export type ResolvedLaunchMode = "managed" | "path";
 
+const DEFAULT_LSP_COMMANDS = new Set(["bifrost", "bifrost-lsp"]);
+
+export function isDefaultLspCommand(configuredPath: string): boolean {
+  return DEFAULT_LSP_COMMANDS.has(configuredPath.trim());
+}
+
 export interface BifrostLaunchConfig {
   command: string;
   args: string[];
@@ -88,7 +94,7 @@ export function resolveLaunchMode(
   if (mode === "bundled") {
     return "managed";
   }
-  if (configuredPath.trim() && configuredPath.trim() !== "bifrost") {
+  if (configuredPath.trim() && !isDefaultLspCommand(configuredPath)) {
     return "path";
   }
   if (mode === "auto" && managedBinaryPath) {
@@ -108,7 +114,13 @@ export function buildLaunchConfig(
   managedBinaryPath?: string | null
 ): BifrostLaunchConfig {
   const resolvedMode = resolveLaunchMode(mode, configuredPath, managedBinaryPath);
-  const command = commandForMode(resolvedMode, extensionDir, configuredPath, managedBinaryPath);
+  const command = commandForMode(
+    mode,
+    resolvedMode,
+    extensionDir,
+    configuredPath,
+    managedBinaryPath
+  );
   const args = ["--root", workspaceRoot, ...extraArgs];
   return {
     command,
@@ -127,12 +139,9 @@ export function buildLaunchConfig(
 export function buildMcpConfig(
   workspaceRoot: string,
   extensionDir: string,
-  mode: LaunchMode,
-  configuredPath: string,
-  managedBinaryPath?: string | null
+  configuredPath: string
 ): BifrostMcpConfig {
-  const resolvedMode = resolveLaunchMode(mode, configuredPath, managedBinaryPath);
-  const command = commandForMode(resolvedMode, extensionDir, configuredPath, managedBinaryPath);
+  const command = commandForMcp(extensionDir, configuredPath);
   return {
     mcpServers: {
       bifrost: {
@@ -141,6 +150,22 @@ export function buildMcpConfig(
       }
     }
   };
+}
+
+export async function validateMcpCommand(
+  config: BifrostMcpConfig,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  const command = config.mcpServers.bifrost.command;
+  await validateCommand(
+    command,
+    cwd,
+    env,
+    (value) =>
+      `Bifrost MCP CLI "${value}" was not found on PATH. Set bifrost.mcpServerPath to a Bifrost CLI that supports --mcp, or install the Bifrost CLI on PATH. The extension-managed bifrost-lsp server cannot provide MCP.`,
+    "Bifrost MCP CLI"
+  );
 }
 
 export function buildMcpHostCommands(config: BifrostMcpConfig): BifrostMcpHostCommands {
@@ -183,33 +208,26 @@ export function spawnBifrostServer(
 }
 
 export async function validateLaunchCommand(config: BifrostLaunchConfig): Promise<void> {
-  const command = config.command;
-  if (!command.trim()) {
-    throw new Error(
-      "Bifrost server path is empty. Configure bifrost.serverPath or choose bundled launch mode."
-    );
-  }
-
-  if (isPathLikeCommand(command)) {
-    await validateExecutablePath(command, config.cwd);
-    return;
-  }
-
-  const resolved = await findOnPath(
-    command,
-    config.env.PATH ?? process.env.PATH ?? "",
-    config.env.PATHEXT ?? process.env.PATHEXT,
-    config.cwd
+  await validateCommand(
+    config.command,
+    config.cwd,
+    config.env,
+    (value) =>
+      `Bifrost binary "${value}" was not found on PATH. Configure bifrost.serverPath, install Bifrost on PATH, or choose bundled launch mode.`
   );
-  if (!resolved) {
-    throw new Error(
-      `Bifrost binary "${command}" was not found on PATH. Configure bifrost.serverPath, install Bifrost on PATH, or choose bundled launch mode.`
-    );
-  }
 }
 
 export function findLocalDevBinary(extensionDir: string): string | null {
+  const executable = process.platform === "win32" ? "bifrost-lsp.exe" : "bifrost-lsp";
+  return findLocalDevBinaryNamed(extensionDir, executable);
+}
+
+function findLocalDevBifrostCli(extensionDir: string): string | null {
   const executable = process.platform === "win32" ? "bifrost.exe" : "bifrost";
+  return findLocalDevBinaryNamed(extensionDir, executable);
+}
+
+function findLocalDevBinaryNamed(extensionDir: string, executable: string): string | null {
   const candidates = [
     path.resolve(extensionDir, "..", "..", "target", "debug", executable),
     path.resolve(extensionDir, "..", "..", "target", "release", executable)
@@ -344,6 +362,7 @@ export function formatError(error: unknown): string {
 }
 
 function commandForMode(
+  requestedMode: LaunchMode,
   mode: ResolvedLaunchMode,
   extensionDir: string,
   configuredPath: string,
@@ -359,11 +378,53 @@ function commandForMode(
   }
 
   const configured = configuredPath.trim();
-  if (configured && configured !== "bifrost") {
+  if (requestedMode === "path") {
+    return configured;
+  }
+  if (configured && !isDefaultLspCommand(configured)) {
     return configured;
   }
 
-  return findLocalDevBinary(extensionDir) ?? "bifrost";
+  return findLocalDevBinary(extensionDir) ?? "bifrost-lsp";
+}
+
+function commandForMcp(extensionDir: string, configuredPath: string): string {
+  const configured = configuredPath.trim();
+  if (configured && configured !== "bifrost") {
+    return configured;
+  }
+  return findLocalDevBifrostCli(extensionDir) ?? "bifrost";
+}
+
+async function validateCommand(
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  notFoundMessage: (value: string) => string,
+  pathDescription = "Bifrost binary"
+): Promise<void> {
+  if (!command.trim()) {
+    throw new Error(
+      pathDescription === "Bifrost binary"
+        ? "Bifrost server path is empty. Configure bifrost.serverPath or choose bundled launch mode."
+        : "Bifrost MCP CLI path is empty. Set bifrost.mcpServerPath to a Bifrost CLI that supports --mcp."
+    );
+  }
+
+  if (isPathLikeCommand(command)) {
+    await validateExecutablePath(command, cwd, pathDescription);
+    return;
+  }
+
+  const resolved = await findOnPath(
+    command,
+    env.PATH ?? process.env.PATH ?? "",
+    env.PATHEXT ?? process.env.PATHEXT,
+    cwd
+  );
+  if (!resolved) {
+    throw new Error(notFoundMessage(command));
+  }
 }
 
 function spawnCommand(
@@ -401,7 +462,11 @@ function isPathLikeCommand(command: string): boolean {
   return path.isAbsolute(command) || command.includes("/") || command.includes("\\");
 }
 
-async function validateExecutablePath(command: string, cwd?: string): Promise<void> {
+async function validateExecutablePath(
+  command: string,
+  cwd?: string,
+  description = "Bifrost binary"
+): Promise<void> {
   const resolvedCommand = path.isAbsolute(command) || !cwd ? command : path.resolve(cwd, command);
   let stat;
   try {
@@ -409,23 +474,32 @@ async function validateExecutablePath(command: string, cwd?: string): Promise<vo
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") {
-      throw new Error(
-        `Bifrost binary was not found at ${resolvedCommand}. Configure bifrost.serverPath, rebuild the binary, or choose bundled launch mode.`,
-        { cause: error }
-      );
+      const message =
+        description === "Bifrost binary"
+          ? `Bifrost binary was not found at ${resolvedCommand}. Configure bifrost.serverPath, rebuild the binary, or choose bundled launch mode.`
+          : `${description} was not found at ${resolvedCommand}. Configure bifrost.mcpServerPath, rebuild the CLI, or install the Bifrost CLI on PATH.`;
+      throw new Error(message, { cause: error });
     }
     throw error;
   }
 
   if (!stat.isFile()) {
-    throw new Error(`Bifrost server path is not a file: ${resolvedCommand}`);
+    throw new Error(
+      description === "Bifrost binary"
+        ? `Bifrost server path is not a file: ${resolvedCommand}`
+        : `${description} path is not a file: ${resolvedCommand}`
+    );
   }
 
   const accessMode = process.platform === "win32" ? fsConstants.F_OK : fsConstants.X_OK;
   try {
     await fs.access(resolvedCommand, accessMode);
   } catch {
-    throw new Error(`Bifrost binary is not executable: ${resolvedCommand}`);
+    throw new Error(
+      description === "Bifrost binary"
+        ? `Bifrost binary is not executable: ${resolvedCommand}`
+        : `${description} is not executable: ${resolvedCommand}`
+    );
   }
 }
 

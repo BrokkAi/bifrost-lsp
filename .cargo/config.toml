@@ -1,0 +1,5 @@
+[env]
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_MEMORY_MANAGEMENT"
+BIFROST_PARALLELISM = { value = "1", force = false }
+RAYON_NUM_THREADS = { value = "1", force = false }
+BIFROST_SQLITE_WRITER_CACHE_KIB = { value = "8192", force = false }
