@@ -4,8 +4,8 @@
   "description": "Tree-sitter-backed code intelligence for definitions, references, symbols, hierarchy, rename, diagnostics, and MCP workflows.",
   "version": "0.12.0",
   "bifrost": {
-    "serverVersion": "0.1.0",
-    "minimumServerVersion": "0.1.0",
+    "serverVersion": "0.1.1",
+    "minimumServerVersion": "0.1.1",
     "engineCompatibility": ">=0.13.0 <0.14.0",
     "allowPrerelease": false,
     "archiveSha256": {}

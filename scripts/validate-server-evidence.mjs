@@ -65,10 +65,13 @@ export function validateServerEvidence({
   if (!/^[0-9a-f]{40}$/u.test(sourceCommit)) {
     throw new Error(`Invalid source commit evidence: ${sourceCommit}`);
   }
-  if (!fs.statSync(cargoLockPath).isFile() || !fs.readFileSync(cargoLockPath, "utf8").includes("[[package]]")) {
+  if (!fs.statSync(cargoLockPath).isFile()) {
     throw new Error("Cargo.lock evidence is missing or invalid");
   }
-  const lock = fs.readFileSync(cargoLockPath, "utf8");
+  const lock = fs.readFileSync(cargoLockPath, "utf8").replace(/\r\n/gu, "\n");
+  if (!lock.includes("[[package]]")) {
+    throw new Error("Cargo.lock evidence is missing or invalid");
+  }
   const enginePackages = [...lock.matchAll(/\[\[package\]\]\nname = "(brokk-bifrost(?:-[^"]+)?)"\n([\s\S]*?)(?=\n\[\[package\]\]|$)/gu)]
     .filter(([, name]) => name !== "brokk-bifrost-lsp");
   if (!enginePackages.length) {

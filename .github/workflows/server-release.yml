@@ -82,7 +82,7 @@ jobs:
   build:
     needs: metadata
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - name: linux-x64
@@ -144,8 +144,8 @@ jobs:
           EXPECTED_SOURCE_COMMIT: ${{ needs.metadata.outputs.ref }}
         run: |
           cargo build --locked --release --target "${{ matrix.rust_target }}" --bin bifrost-lsp
-          cargo test --locked --target "${{ matrix.rust_target }}" --test bifrost_lsp_server
-          cargo test --locked --target "${{ matrix.rust_target }}" --test pack_engine_integration
+          cargo test --locked --release --target "${{ matrix.rust_target }}" --test bifrost_lsp_server
+          cargo test --locked --release --target "${{ matrix.rust_target }}" --test pack_engine_integration
           binary="target/${{ matrix.rust_target }}/release/${{ matrix.binary }}"
           mkdir -p evidence
           "$binary" pack-engine-profile > evidence/engine-profile.json
