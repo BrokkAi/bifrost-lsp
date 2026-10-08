@@ -112,13 +112,10 @@ fn write_policy_pack(root: &Path) -> PathBuf {
     policy_root
 }
 
-fn release_bundle(root: &Path, bifrost_requirement: &str) -> PathBuf {
+fn release_bundle(root: &Path) -> PathBuf {
     let activation = json!([{}]);
     let measurement_activation = json!({});
-    let compatibility = json!({
-        "bifrost": bifrost_requirement,
-        "toolchains": []
-    });
+    let compatibility = json!({ "toolchains": [] });
     let provenance = json!({
         "source": "https://example.invalid/fixture/widget",
         "revision": "lsp-integration-fixture"
@@ -238,6 +235,10 @@ fn profile_matches_the_real_server_identity_negotiated_during_initialize() {
     let engine_version = profile["engine_version"]
         .as_str()
         .expect("profile engine_version");
+    assert_eq!(
+        engine_version, "0.13.0",
+        "release engine pin must match the actual linked engine"
+    );
     assert!(
         !profile["build_identity"]
             .as_str()
@@ -363,11 +364,8 @@ fn corrupt_selected_policy_source_fails_closed_before_the_lsp_session_starts() {
 
 #[test]
 fn compatible_selected_semantic_bundle_is_installed_and_reused_offline() {
-    let profile = profile();
-    let version = profile["engine_version"].as_str().expect("engine version");
-    let compatibility = format!(">={version}, <0.13.0");
     let fixture = TempDir::new().expect("release fixture");
-    let bundle = release_bundle(fixture.path(), &compatibility);
+    let bundle = release_bundle(fixture.path());
     let cache = TempDir::new().expect("persistent semantic cache");
     let workspace = TempDir::new().expect("workspace root");
     fs::write(
@@ -413,7 +411,7 @@ fn compatible_selected_semantic_bundle_is_installed_and_reused_offline() {
 #[test]
 fn incompatible_schema_or_corrupt_selected_semantic_bundle_is_rejected_before_initialize() {
     let incompatible_root = TempDir::new().expect("incompatible fixture");
-    let incompatible_bundle = release_bundle(incompatible_root.path(), ">=0.12.0, <0.13.0");
+    let incompatible_bundle = release_bundle(incompatible_root.path());
     let index_path = incompatible_bundle.join("index.json");
     let mut index: Value = serde_json::from_slice(&fs::read(&index_path).unwrap()).unwrap();
     index["schema_version"] = json!(999);
@@ -434,7 +432,7 @@ fn incompatible_schema_or_corrupt_selected_semantic_bundle_is_rejected_before_in
     );
 
     let corrupt_root = TempDir::new().expect("corrupt fixture");
-    let corrupt_bundle = release_bundle(corrupt_root.path(), ">=0.12.0, <0.13.0");
+    let corrupt_bundle = release_bundle(corrupt_root.path());
     let index: Value = serde_json::from_slice(
         &fs::read(corrupt_bundle.join("index.json")).expect("read generated release index"),
     )

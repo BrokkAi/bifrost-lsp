@@ -22,7 +22,8 @@ reports the exact linked engine through `pack-engine-profile` and the LSP
 initialize result, validates explicitly selected semantic bundles before
 accepting a session, and bootstraps their semantic model in its workspace.
 Policy listing and `bifrost/runPolicy` resolve policy IDs through the selected
-policy catalog. The exact `brokk-bifrost` 0.12.0 crates on crates.io predate the
-profile, selected-root, and current analyzer APIs these behaviors require, so a default registry
-build cannot yet qualify the server. See the local engine build and publication
-prerequisite in [RELEASING.md](RELEASING.md#server-build-and-engine-api-prerequisite).
+policy catalog. The server pins the published `brokk-bifrost` 0.13.0 crate family. Each standalone
+server release carries its linked engine; the extension manages that pairing by
+installing a checksum-verified server in editor global storage. Updating the
+extension selects its qualified server version, with compatible cached servers
+available offline. See [RELEASING.md](RELEASING.md#server-build-and-release).

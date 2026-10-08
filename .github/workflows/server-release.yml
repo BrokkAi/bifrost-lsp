@@ -1,0 +1,300 @@
+name: Release standalone server
+on:
+  push:
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag, or commit to qualify when no release tag is supplied
+        default: ""
+        required: false
+        type: string
+      release_tag:
+        description: Exact existing server release tag to qualify and publish
+        default: ""
+        required: false
+        type: string
+      qualify_only:
+        description: Run the complete matrix without creating a GitHub Release
+        default: true
+        required: true
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      ref: ${{ steps.source.outputs.sha }}
+      release_tag: ${{ steps.context.outputs.release_tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Select release ref
+        id: context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          PUSH_REF: ${{ github.ref }}
+          PUSH_TAG: ${{ github.ref_name }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = push ]; then
+            ref="$PUSH_REF"
+          elif [ -n "$RELEASE_TAG" ]; then
+            ref="$RELEASE_TAG"
+          elif [ -n "$SOURCE_REF" ]; then
+            ref="$SOURCE_REF"
+          else
+            ref="$WORKFLOW_SHA"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = push ]; then
+            echo "release_tag=$PUSH_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ steps.context.outputs.ref }}
+      - name: Pin resolved source revision
+        id: source
+        run: |
+          sha=$(git rev-parse HEAD)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - run: node --test scripts/server-release.test.mjs scripts/prepare-vscode-extension-manifest.test.mjs
+      - name: Read package version
+        id: version
+        run: node scripts/validate-server-release.mjs --cargo-manifest Cargo.toml --metadata-only true --github-output "$GITHUB_OUTPUT"
+      - name: Require tag and package version agreement
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        id: validate
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+        run: node scripts/validate-server-release.mjs --cargo-manifest Cargo.toml --tag "$RELEASE_TAG" --metadata-only true
+
+  build:
+    needs: metadata
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-latest
+            rust_target: x86_64-unknown-linux-gnu
+            release_target: x86_64-unknown-linux-gnu
+            binary: bifrost-lsp
+            package: true
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            release_target: aarch64-unknown-linux-gnu
+            binary: bifrost-lsp
+            package: true
+          - name: macos-x64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            release_target: universal-apple-darwin
+            binary: bifrost-lsp
+            package: false
+          - name: macos-arm64
+            runner: macos-14
+            rust_target: aarch64-apple-darwin
+            release_target: universal-apple-darwin
+            binary: bifrost-lsp
+            package: false
+          - name: windows-x64
+            runner: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            release_target: x86_64-pc-windows-msvc
+            binary: bifrost-lsp.exe
+            package: true
+          - name: windows-arm64
+            runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+            release_target: aarch64-pc-windows-msvc
+            binary: bifrost-lsp.exe
+            package: true
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      JAVA_HOME: ""
+      RUST_TEST_THREADS: "2"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ needs.metadata.outputs.ref }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - name: Install Rust target
+        shell: bash
+        run: rustup target add "${{ matrix.rust_target }}"
+      - run: cargo fmt --check
+      - name: Build and run native server checks
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ needs.metadata.outputs.ref }}
+        run: |
+          cargo build --locked --release --target "${{ matrix.rust_target }}" --bin bifrost-lsp
+          cargo test --locked --target "${{ matrix.rust_target }}" --test bifrost_lsp_server
+          cargo test --locked --target "${{ matrix.rust_target }}" --test pack_engine_integration
+          binary="target/${{ matrix.rust_target }}/release/${{ matrix.binary }}"
+          mkdir -p evidence
+          "$binary" pack-engine-profile > evidence/engine-profile.json
+          "$binary" --version > evidence/server-version.txt
+          source_commit=$(git rev-parse HEAD)
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          printf '%s\n' "$source_commit" > evidence/source-commit.txt
+          cp Cargo.lock evidence/Cargo.lock
+          cat > evidence/target.json <<EOF
+          {"rust_targets":["${{ matrix.rust_target }}"],"release_target":"${{ matrix.release_target }}","runner":"${{ matrix.runner }}"}
+          EOF
+          node scripts/validate-server-evidence.mjs \
+            --cargo-manifest Cargo.toml \
+            --profile evidence/engine-profile.json \
+            --version-output evidence/server-version.txt \
+            --target-identity evidence/target.json \
+            --source-commit evidence/source-commit.txt \
+            --cargo-lock evidence/Cargo.lock \
+            --rust-targets "${{ matrix.rust_target }}" \
+            --release-target "${{ matrix.release_target }}"
+      - name: Exercise Windows archive packaging and round trip
+        if: startsWith(matrix.name, 'windows-')
+        shell: bash
+        run: node --test scripts/server-release.test.mjs
+      - name: Package platform archive
+        if: matrix.package
+        shell: bash
+        run: |
+          mkdir -p dist
+          node scripts/package-server-release.mjs \
+            --version "${{ needs.metadata.outputs.version }}" \
+            --target "${{ matrix.release_target }}" \
+            --binary "target/${{ matrix.rust_target }}/release/${{ matrix.binary }}" \
+            --license LICENSE \
+            --dist dist
+      - name: Upload platform archive
+        if: matrix.package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-package-${{ matrix.name }}
+          path: dist/
+          if-no-files-found: error
+      - name: Upload platform evidence
+        if: matrix.package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-evidence-${{ matrix.name }}
+          path: evidence/
+          if-no-files-found: error
+      - name: Upload macOS architecture binary
+        if: ${{ !matrix.package }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-mac-binary-${{ matrix.name == 'macos-x64' && 'x64' || 'arm64' }}
+          path: target/${{ matrix.rust_target }}/release/${{ matrix.binary }}
+          if-no-files-found: error
+      - name: Upload macOS architecture evidence
+        if: ${{ !matrix.package }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-evidence-${{ matrix.name }}
+          path: evidence/
+          if-no-files-found: error
+
+  package-macos:
+    needs: [metadata, build]
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ needs.metadata.outputs.ref }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: server-mac-binary-x64
+          path: raw/x64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: server-mac-binary-arm64
+          path: raw/arm64
+      - name: Create and verify universal binary
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ needs.metadata.outputs.ref }}
+        run: |
+          mkdir -p universal evidence dist
+          lipo -create raw/x64/bifrost-lsp raw/arm64/bifrost-lsp -output universal/bifrost-lsp
+          lipo -verify_arch x86_64 arm64 universal/bifrost-lsp
+          chmod 755 universal/bifrost-lsp
+          universal/bifrost-lsp pack-engine-profile > evidence/engine-profile.json
+          universal/bifrost-lsp --version > evidence/server-version.txt
+          source_commit=$(git rev-parse HEAD)
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          printf '%s\n' "$source_commit" > evidence/source-commit.txt
+          cp Cargo.lock evidence/Cargo.lock
+          cat > evidence/target.json <<EOF
+          {"rust_targets":["x86_64-apple-darwin","aarch64-apple-darwin"],"release_target":"universal-apple-darwin","runner":"macos-14"}
+          EOF
+          node scripts/validate-server-evidence.mjs \
+            --cargo-manifest Cargo.toml \
+            --profile evidence/engine-profile.json \
+            --version-output evidence/server-version.txt \
+            --target-identity evidence/target.json \
+            --source-commit evidence/source-commit.txt \
+            --cargo-lock evidence/Cargo.lock \
+            --rust-targets "x86_64-apple-darwin,aarch64-apple-darwin" \
+            --release-target universal-apple-darwin
+      - name: Package universal archive
+        run: node scripts/package-server-release.mjs --version "${{ needs.metadata.outputs.version }}" --target universal-apple-darwin --binary universal/bifrost-lsp --license LICENSE --dist dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-package-macos-universal
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-evidence-macos-universal
+          path: evidence/
+          if-no-files-found: error
+
+  publish:
+    needs: [metadata, build, package-macos]
+    if: github.event_name == 'push' || (inputs.qualify_only == false && inputs.release_tag != '')
+    environment: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ needs.metadata.outputs.ref }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: server-package-*
+          path: dist
+          merge-multiple: true
+      - name: Verify complete release artifact set
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
+        run: node scripts/validate-server-release.mjs --cargo-manifest Cargo.toml --tag "$RELEASE_TAG" --dist dist
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Bifrost LSP $VERSION" --notes "Standalone bifrost-lsp server $VERSION. Platform archives and SHA-256 sidecars were qualified by the release workflow." dist/*

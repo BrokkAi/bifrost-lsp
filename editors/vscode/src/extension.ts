@@ -25,12 +25,14 @@ import {
   buildMcpHostCommands,
   decideBifrostGitignorePrompt,
   formatError,
+  isDefaultLspCommand,
   parseExtraArgs,
   replaceLegacyBifrostGitignoreEntry,
   selectTrustedFormatterCommands,
   sourceFileWatchers,
   spawnBifrostServer,
   supportedWorkspaceRoot,
+  validateMcpCommand,
   validateLaunchCommand,
   workspaceGitignoreIncludesLegacyBifrostEntry
 } from "./lifecycle";
@@ -41,7 +43,8 @@ import {
   normalizeBinaryCompatibility,
   releaseAssetFor,
   releaseTargetFor,
-  selectManagedBinaryAndPreparePreferred
+  selectManagedBinaryAndPreparePreferred,
+  shouldPreparePreferredManagedBinary
 } from "./provisioning";
 import type { BinaryCompatibility, ManagedBinaryPreparation } from "./provisioning";
 import type {
@@ -114,6 +117,8 @@ let pendingManagedBinaryPreparation: ManagedBinaryPreparation | undefined;
 let extensionActive = false;
 const expectedPolicySuppressionWrite = new ExpectedPolicySuppressionWrite();
 const BIFROST_GITIGNORE_DECLINED_KEY_PREFIX = "bifrost.legacyGitignoreMigrationDeclined:";
+const MANAGED_SERVER_UPDATES_DISABLED_KEY = "bifrost.managedServerUpdatesDisabled";
+const MANAGED_SERVER_DEFERRED_VERSION_KEY = "bifrost.managedServerDeferredVersion";
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionActive = true;
@@ -1348,11 +1353,10 @@ async function resolveMcpConfig(context: vscode.ExtensionContext): Promise<Bifro
   }
 
   const config = vscode.workspace.getConfiguration("bifrost");
-  const command = config.get<string>("serverPath") || "bifrost";
-  const mode = config.get<LaunchMode>("launchMode") || "auto";
-  const managedBinary = await prepareManagedBinary(context, mode, command);
-  const managedBinaryPath = managedBinary?.selected.path ?? null;
-  return buildMcpConfig(root, context.extensionUri.fsPath, mode, command, managedBinaryPath);
+  const command = config.get<string>("mcpServerPath") || "bifrost";
+  const mcpConfig = buildMcpConfig(root, context.extensionUri.fsPath, command);
+  await validateMcpCommand(mcpConfig, root);
+  return mcpConfig;
 }
 
 async function copyText(text: string, label: string): Promise<void> {
@@ -1367,13 +1371,12 @@ async function prepareManagedBinary(
   configuredPath: string
 ): Promise<ManagedBinaryPreparation | null> {
   const configured = configuredPath.trim();
-  if (mode === "path" || (mode === "auto" && configured && configured !== "bifrost")) {
+  if (mode === "path" || (mode === "auto" && configured && !isDefaultLspCommand(configured))) {
     return null;
   }
 
   const compatibility = requiredBinaryCompatibility(context);
   const serverVersion = compatibility.serverVersion;
-  const archiveSha256 = requiredArchiveSha256(context, serverVersion);
   const storageDir = context.globalStorageUri.fsPath;
   try {
     releaseTargetFor();
@@ -1386,18 +1389,28 @@ async function prepareManagedBinary(
     return null;
   }
 
+  const allowPreferredPreparation = shouldPreparePreferredManagedBinary(
+    serverVersion,
+    context.globalState.get<boolean>(MANAGED_SERVER_UPDATES_DISABLED_KEY, false),
+    context.globalState.get<string>(MANAGED_SERVER_DEFERRED_VERSION_KEY)
+  );
+  if (!allowPreferredPreparation) {
+    log(`Managed Bifrost ${serverVersion} preferred update is suppressed by the user's policy.`);
+  }
   const managed = await selectManagedBinaryAndPreparePreferred(
     () => findCompatibleManagedBinary(storageDir, compatibility),
-    () => installManagedBinaryForContext(context, compatibility, archiveSha256),
+    allowPreferredPreparation
+      ? () =>
+          installManagedBinaryForContext(
+            context,
+            compatibility,
+            requiredArchiveSha256(context, serverVersion)
+          )
+      : null,
     log
   );
   if (!managed) {
-    const binaryPath = await promptAndInstallManagedBinary(
-      context,
-      mode,
-      compatibility,
-      archiveSha256
-    );
+    const binaryPath = await promptAndInstallManagedBinary(context, mode, compatibility);
     if (!binaryPath && mode === "bundled") {
       throw new Error(
         `Bifrost ${serverVersion} is not installed for ${process.platform}-${process.arch}.`
@@ -1447,15 +1460,17 @@ function schedulePreparedManagedBinaryActivation(context: vscode.ExtensionContex
 async function promptAndInstallManagedBinary(
   context: vscode.ExtensionContext,
   mode: LaunchMode,
-  compatibility: BinaryCompatibility,
-  archiveSha256: string
+  compatibility: BinaryCompatibility
 ): Promise<string | null> {
   const serverVersion = compatibility.serverVersion;
-  const disabledKey = "bifrost.managedServerUpdatesDisabled";
-  const deferredKey = "bifrost.managedServerDeferredVersion";
+  const disabledKey = MANAGED_SERVER_UPDATES_DISABLED_KEY;
+  const deferredKey = MANAGED_SERVER_DEFERRED_VERSION_KEY;
   if (
-    context.globalState.get<boolean>(disabledKey, false) ||
-    context.globalState.get<string>(deferredKey) === serverVersion
+    !shouldPreparePreferredManagedBinary(
+      serverVersion,
+      context.globalState.get<boolean>(disabledKey, false),
+      context.globalState.get<string>(deferredKey)
+    )
   ) {
     log(`Managed Bifrost ${serverVersion} update prompt is suppressed by the user's policy.`);
     return null;
@@ -1481,17 +1496,20 @@ async function promptAndInstallManagedBinary(
     return null;
   }
   await context.globalState.update(deferredKey, undefined);
-  return tryInstallManagedBinaryForMode(context, mode, compatibility, archiveSha256);
+  return tryInstallManagedBinaryForMode(context, mode, compatibility);
 }
 
 async function tryInstallManagedBinaryForMode(
   context: vscode.ExtensionContext,
   mode: LaunchMode,
-  compatibility: BinaryCompatibility,
-  archiveSha256: string
+  compatibility: BinaryCompatibility
 ): Promise<string | null> {
   try {
-    return await installManagedBinaryForContext(context, compatibility, archiveSha256);
+    return await installManagedBinaryForContext(
+      context,
+      compatibility,
+      requiredArchiveSha256(context, compatibility.serverVersion)
+    );
   } catch (error) {
     if (mode === "bundled") {
       throw error;

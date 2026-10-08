@@ -1872,6 +1872,7 @@ fn run_rql_query_result(
                     CodeQueryResultValue::ConfigurationFact { value } => &value.path,
                     CodeQueryResultValue::RuntimeKeyedReadValue { value } => &value.path,
                     CodeQueryResultValue::CallResultObligation { value } => &value.path,
+                    CodeQueryResultValue::ResultSubjectUse { value } => &value.path,
                     CodeQueryResultValue::AssignmentRelation { value } => &value.path,
                     CodeQueryResultValue::BranchRelation { value } => &value.path,
                     CodeQueryResultValue::LoopRelation { value } => &value.path,
@@ -4414,6 +4415,7 @@ fn lsp_analyzer_config(python_pack: Option<&LspPythonPackConfig>) -> AnalyzerCon
     AnalyzerConfig {
         python: PythonAnalyzerConfig {
             environment: python_pack.map(|pack| pack.environment.clone()),
+            ..Default::default()
         },
         ..Default::default()
     }
@@ -5659,6 +5661,8 @@ mod tests {
                         local_name: Some("NestQuery".to_string()),
                         imported_name: Some("Query".to_string()),
                         module: Some("@nestjs/common".to_string()),
+                        annotation_type: None,
+                        annotation_status: None,
                         binding_status: "resolved",
                         boundary: "external",
                         completion: "complete",

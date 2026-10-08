@@ -8,7 +8,7 @@ hover, and related editor features.
 ## Requirements
 
 - VS Code 1.90+
-- A supported platform for extension-managed downloads, or a `bifrost` binary
+- A supported platform for extension-managed downloads, or a `bifrost-lsp` binary
   available through one of the launch modes below
 
 ## Cursor
@@ -20,8 +20,8 @@ for editor-native definitions, references, hover, rename, symbols, and
 diagnostics.
 
 This extension is separate from the Bifrost Cursor agent plugin. The extension
-starts Bifrost with `--lsp`; the agent plugin starts another Bifrost process
-with `--mcp`. Install either integration for its own surface, or install both,
+starts its managed `bifrost-lsp` server with `--lsp`; the agent plugin uses a
+separate `bifrost` CLI process with `--mcp`. Install either integration for its own surface, or install both,
 but do not point an MCP host at the extension's LSP process.
 
 With the default `auto` launch mode, accept the managed-binary installation
@@ -29,7 +29,7 @@ prompt when it appears. In **Output > Bifrost**, confirm that the expected
 release was downloaded and installed in Cursor's extension global storage.
 The installer verifies both the archive checksum published with the GitHub
 Release and the SHA-256 pinned into this extension package before extracting
-the binary; it also checks `bifrost --version` before starting the server.
+the binary; it also checks `bifrost-lsp --version` before starting the server.
 
 For the full installation, upgrade, troubleshooting, and exact-workspace smoke
 procedure, see the [Cursor integration guide](https://bifrost.brokk.ai/cursor/).
@@ -39,7 +39,7 @@ procedure, see the [Cursor integration guide](https://bifrost.brokk.ai/cursor/).
 | Setting                 | Description                                                                                   |
 | ----------------------- | --------------------------------------------------------------------------------------------- |
 | `bifrost.launchMode`    | How to start Bifrost: `auto`, `bundled`, or `path`.                                           |
-| `bifrost.serverPath`    | Path to the `bifrost` binary, or command name on `PATH`.                                      |
+| `bifrost.serverPath`    | Path to the `bifrost-lsp` binary, or command name on `PATH`.                                  |
 | `bifrost.debug`         | Enable verbose LSP request and notification tracing.                                          |
 | `bifrost.slowRequestMs` | Log LSP handlers that take at least this many milliseconds.                                   |
 | `bifrost.extraArgs`     | Extra command-line arguments appended to the LSP server launch.                               |
@@ -52,10 +52,10 @@ Launch mode behavior:
   exact preferred extension-managed binary, then the newest compatible cached
   patch, then a preferred binary accepted for installation, then a
   local development build under `target/`, then
-  `bifrost` on `PATH`.
+  `bifrost-lsp` on `PATH`.
 - `bundled`: require a compatible extension-managed binary for this platform
   and prompt to install the preferred binary only when none is cached.
-- `path`: use `bifrost.serverPath`, falling back to `bifrost` on `PATH`.
+- `path`: use `bifrost.serverPath` as the exact executable path or command.
 
 The managed server range uses independent extension package metadata:
 `bifrost.serverVersion`, `bifrost.minimumServerVersion`, and
@@ -82,9 +82,8 @@ negotiated by the server. It never derives pack schemas or capabilities from
 
 Server binaries without `pack-engine-profile` continue to start with their
 existing behavior. The **Output > Bifrost** channel reports that open semantic
-packs are unavailable for that engine. This includes the current packaged
-baseline until a compatible server release provides the profile command and
-cache environment facade. A pending pack qualification, missing compatible
+packs are unavailable for that engine. The managed standalone server provides the profile command and selected-pack
+cache facade. A pending pack qualification, missing compatible
 release, or unavailable release service also leaves the server running without
 pack environment variables. Profile execution or validation failures,
 malformed manifests, unsupported manifest schemas, and cache-integrity failures
@@ -100,7 +99,7 @@ content only, or `BIFROST_OPEN_PACKS_REFRESH=1` to refresh the cached selection.
 
 After LSP initialization, the extension also requires the server to advertise
 `capabilities.experimental.bifrost.protocolVersion` equal to `1` and a
-three-component `engineVersion` inside `bifrost.engineCompatibility`. Missing,
+three-component `engineVersion` inside `bifrost.engineCompatibility` (`>=0.13.0 <0.14.0` for this release). Missing,
 malformed, unsupported, or out-of-range identities stop the client; the
 extension never infers compatibility from display text.
 
@@ -146,7 +145,7 @@ set:
 ```json
 {
   "bifrost.launchMode": "path",
-  "bifrost.serverPath": "/path/to/bifrost/target/debug/bifrost"
+  "bifrost.serverPath": "/path/to/bifrost-lsp/target/debug/bifrost-lsp"
 }
 ```
 
@@ -207,9 +206,9 @@ These commands are manual. The extension does not open MCP setup on activation,
 does not mutate external host configuration, and does not prompt again after a
 dismissal.
 
-The MCP setup commands use the same binary resolution settings as the language
-server where practical: a configured `bifrost.serverPath`, the
-extension-managed binary, a local development build, or `bifrost` on `PATH`.
+The MCP setup commands use `bifrost.mcpServerPath` to resolve a separately
+installed Bifrost CLI. Its default is `bifrost` on `PATH`. Install the CLI or
+configure this path before copying MCP setup.
 
 The copied entry uses the current workspace root and starts a separate Bifrost
 MCP process:
@@ -226,7 +225,7 @@ MCP process:
 ```
 
 Do not point MCP hosts at the VS Code LSP process. The extension and MCP hosts
-should launch separate stdio processes from the same Bifrost binary/release.
+launch separate stdio processes using their respective server binaries.
 
 ## Packaging
 
@@ -292,3 +291,15 @@ Useful settings:
 `bifrost.slowRequestMs` logs requests or notifications that take longer than
 the configured threshold. Handler errors and panics are always logged with LSP
 method context.
+
+## Managed server versions
+
+This extension selects standalone server `0.1.0`, linked to Bifrost `0.13.0`.
+Server, extension, and engine versions are independent. The engine is part of
+the server binary; a server update replaces the engine pairing as a unit.
+Managed binaries live in editor global storage by server version and platform.
+A compatible cached server can start offline while the preferred release is
+prepared. Update deferral and disabling automatic updates are respected.
+
+The MCP setup commands use a separately installed `bifrost` CLI, configured
+with `bifrost.mcpServerPath`. The managed `bifrost-lsp` binary supports LSP only.

@@ -34,3 +34,27 @@ The manual Linux workflow remains unexecuted. It requires an immutable reviewed
 public engine revision, captures both source revisions and its resolved lock,
 and uploads a qualification archive. Other-platform server archives and live
 public pack release qualification remain release work.
+
+## Bifrost 0.13.0 registry migration
+
+The standalone host now pins the public crates.io `brokk-bifrost` 0.13.0
+family, with registry sources and checksums retained in `Cargo.lock`.
+No engine implementation was copied from a sibling repository. Adaptations
+retain the new result-subject query variant, default Python runtime environment
+configuration, and optional Java annotation provenance in editor transport.
+The historical 0.12.0 local-override results above remain historical evidence;
+release qualification uses the public registry dependency graph.
+
+Current migration validation: registry-only all-target check and strict Clippy
+passed. All 323 ordinary tests passed across the suite and focused schema-8
+fixture rerun, along with 21 existing scheduled regressions and 132 extension
+tests. The real server was accepted in an isolated VS Code profile; a fake
+incompatible engine was shut down. Nine release-helper tests cover exact
+metadata, complete checksums, archive extraction layout, and server/engine
+evidence. Hosted platform builds remain separate qualification.
+
+The current code-smell run remains unreliable: semantic provider async-contract
+errors, partial/work-limited TypeScript proofs, and missing Python declaration
+coverage prevent a clean assertion. Eight note-level loop prompts describe
+per-message parsing, per-artifact reads and serialization. No suppression was
+added and no clean policy result is claimed.
