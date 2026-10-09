@@ -6,8 +6,8 @@
 > unpublished. Bifrost built after release 0.12.0 does not serve LSP:
 > `bifrost --lsp` exits with an error. See [LSP Server](./lsp.md).
 
-Bifrost has no published Zed extension. The Bifrost source repository contains
-an unpublished development scaffold for one. It starts the language server with:
+Bifrost has no published Zed extension. This repository contains an
+unpublished development scaffold for one in [`editors/zed`](../editors/zed/). It starts the language server with:
 
 ```bash
 bifrost-lsp --root <worktree-root>
