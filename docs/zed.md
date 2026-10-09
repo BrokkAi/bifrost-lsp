@@ -13,9 +13,11 @@ unpublished development scaffold for one in [`editors/zed`](../editors/zed/). It
 bifrost-lsp --root <worktree-root>
 ```
 
-It uses the `binary.path` setting of the language server's own entry, then of
-`lsp.bifrost`, and otherwise looks for `bifrost-lsp` on `PATH`. Values in
-`lsp.bifrost.binary.arguments` are appended after `--root`.
+For local development, put `bifrost-lsp` on `PATH` so the extension adapter
+starts it with the worktree root. A configured `binary.path` is a direct Zed
+host override: it bypasses the extension adapter, so the host does not add
+`--root <worktree-root>`. If you use a direct override, provide the fallback
+root yourself through that setting's `binary.arguments`.
 It is not a supported integration.
 
 To use Bifrost tools from Zed's agent, configure MCP instead. MCP does not need
