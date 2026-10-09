@@ -222,6 +222,17 @@ void test("highlights explain and profile execution controls", async () => {
   assertScoped(tokens, "profile", "support.function.wrapper.bifrost-rql");
 });
 
+void test("highlights local-value constraints and relation forms", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    "(identifier :local-value (binary_expression)) (identifier :local_value (binary_expression)) (local-value (binary_expression)) (local_value (binary_expression))"
+  );
+  assertScoped(tokens, ":local-value", "variable.parameter.role.bifrost-rql");
+  assertScoped(tokens, ":local_value", "variable.parameter.role.bifrost-rql");
+  assertScoped(tokens, "local-value", "support.function.wrapper.bifrost-rql");
+  assertScoped(tokens, "local_value", "support.function.wrapper.bifrost-rql");
+});
+
 void test("highlights declaration-bounded containment", async () => {
   const tokens = tokenizeGrammar(await grammar(), "(inside-decl (loop) (call))");
   assertScoped(tokens, "inside-decl", "support.function.wrapper.bifrost-rql");
