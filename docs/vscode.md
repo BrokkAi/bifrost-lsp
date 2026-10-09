@@ -6,7 +6,7 @@ Install the Bifrost VS Code extension, and look up its launch modes, settings, c
 > **The language server moved to bifrost-lsp**
 > Bifrost built after release 0.12.0 does not serve LSP: `bifrost --lsp` exits with an
 > error. The separate `bifrost-lsp` v0.1.1 server is released. Extension
-> version 0.12.0 downloads and manages that server. See
+> version 0.12.1 downloads and manages that server. See
 > [LSP Server](./lsp.md) for the full status.
 
 ## Install
@@ -17,10 +17,10 @@ from the
 or [Open VSX](https://open-vsx.org/extension/brokk/bifrost-vscode). The
 extension needs VS Code 1.90 or newer.
 
-The current published extension version is 0.12.0. It uses standalone server
-version 0.1.1. The rest of this page describes version 0.12.0.
+The current extension version is 0.12.1. It uses standalone server
+version 0.1.1. The rest of this page describes version 0.12.1.
 
-Version 0.12.0 also checks the server's identity after it starts. The server
+Version 0.12.1 also checks the server's identity after it starts. The server
 must report LSP protocol `1` and a Bifrost engine version from `0.13.0` up to,
 but not including, `0.14.0`. Otherwise the extension stops the server. See
 [LSP Server](./lsp.md) for the check and the release files.
@@ -47,7 +47,7 @@ A local development build is `target/debug/bifrost-lsp` or
 extension's own folder. The extension uses the newer of the two. This applies
 only when you run the extension from a source checkout.
 
-In version 0.12.0, the manifest default for `bifrost.serverPath` is
+In version 0.12.1, the manifest default for `bifrost.serverPath` is
 `bifrost-lsp`. `auto` mode also treats the legacy `bifrost` value as a default
 command name and selects the standalone server. In `path` mode, the extension
 uses the configured value verbatim, so set `bifrost.serverPath` to the absolute
@@ -171,7 +171,7 @@ the features that need a running server.
 
 ## Workspace .gitignore
 
-In version 0.12.0, the extension checks the workspace `.gitignore` for a line
+In version 0.12.1, the extension checks the workspace `.gitignore` for a line
 that ignores all of `.bifrost`. If it finds one, it offers to replace that line
 with `.bifrost/cache/`, so that project files under `.bifrost/` can be
 committed. You can choose **Replace**, **Ask Again Later**, or **Don't Ask
