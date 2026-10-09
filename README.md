@@ -16,6 +16,15 @@ exactly match the committed manifest.
 
 See [RELEASING.md](RELEASING.md) for qualification and external setup.
 
+## Documentation
+
+- [LSP Server](docs/lsp.md) — server releases, startup, and compatibility.
+- [VS Code LSP](docs/vscode.md) — install and configure the VS Code extension.
+- [RQL in VS Code](docs/rql-vscode.md) — write queries and policies in VS Code.
+- [Zed LSP](docs/zed.md) — status of Zed language-server support.
+- [Neovim and Vim LSP](docs/neovim.md) — configure Neovim and Vim clients.
+- [Helix LSP](docs/helix.md) — configure the Helix language-server client.
+
 Open semantic packs and policies come from
 [BrokkAi/bifrost-packs](https://github.com/BrokkAi/bifrost-packs). The server
 reports the exact linked engine through `pack-engine-profile` and the LSP
