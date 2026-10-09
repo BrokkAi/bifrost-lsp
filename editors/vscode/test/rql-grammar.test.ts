@@ -233,6 +233,32 @@ void test("highlights local-value constraints and relation forms", async () => {
   assertScoped(tokens, "local_value", "support.function.wrapper.bifrost-rql");
 });
 
+void test("keeps wrapper boundaries exact for anchor and local-value forms", async () => {
+  const loaded = await grammar();
+  const positive = tokenizeGrammar(
+    loaded,
+    "(anchor (capture finding)) (local-value (identifier)) (local_value (identifier))"
+  );
+  assertScoped(positive, "anchor", "support.function.wrapper.bifrost-rql");
+  assertScoped(positive, "local-value", "support.function.wrapper.bifrost-rql");
+  assertScoped(positive, "local_value", "support.function.wrapper.bifrost-rql");
+
+  for (const nearMiss of [
+    "(anchor-extra (capture finding))",
+    "(not-anchor (capture finding))",
+    "(:anchor (capture finding))",
+    "(local-value-extra (identifier))",
+    "(foo-local-value (identifier))",
+    "(local_value_extra (identifier))"
+  ]) {
+    const tokens = tokenizeGrammar(loaded, nearMiss);
+    assert.ok(
+      tokens.every((token) => !token.scopes.includes("support.function.wrapper.bifrost-rql")),
+      `expected ${JSON.stringify(nearMiss)} to have no wrapper scope`
+    );
+  }
+});
+
 void test("highlights declaration-bounded containment", async () => {
   const tokens = tokenizeGrammar(await grammar(), "(inside-decl (loop) (call))");
   assertScoped(tokens, "inside-decl", "support.function.wrapper.bifrost-rql");
