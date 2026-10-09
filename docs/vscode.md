@@ -5,8 +5,8 @@ Install the Bifrost VS Code extension, and look up its launch modes, settings, c
 > [!CAUTION]
 > **The language server moved to bifrost-lsp**
 > Bifrost built after release 0.12.0 does not serve LSP: `bifrost --lsp` exits with an
-> error. The separate `bifrost-lsp` v0.1.1 server is released. The extension
-> source version 0.12.0 is configured to download and manage that server. See
+> error. The separate `bifrost-lsp` v0.1.1 server is released. Extension
+> version 0.12.0 downloads and manages that server. See
 > [LSP Server](./lsp.md) for the full status.
 
 ## Install
@@ -17,9 +17,8 @@ from the
 or [Open VSX](https://open-vsx.org/extension/brokk/bifrost-vscode). The
 extension needs VS Code 1.90 or newer.
 
-The currently published extension version is 0.11.4. This repository's
-extension source is version 0.12.0 and is configured for standalone server
-version 0.1.1. The rest of this page describes the 0.12.0 source version.
+The current published extension version is 0.12.0. It uses standalone server
+version 0.1.1. The rest of this page describes version 0.12.0.
 
 Version 0.12.0 also checks the server's identity after it starts. The server
 must report LSP protocol `1` and a Bifrost engine version from `0.13.0` up to,
