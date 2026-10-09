@@ -4,7 +4,7 @@ description = "Bifrost multi-language code intelligence."
 version = "0.0.1"
 schema_version = 1
 authors = ["Brokk <support@brokk.ai>"]
-repository = "https://github.com/BrokkAi/bifrost"
+repository = "https://github.com/BrokkAi/bifrost-lsp"
 
 [language_servers.bifrost-rust]
 name = "Bifrost"

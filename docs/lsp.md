@@ -44,8 +44,18 @@ first workspace folder. It also appends the strings from its
 `bifrost-lsp --version` to check a downloaded binary before it starts the
 server.
 
-These are the only command-line arguments that the published sources show.
-The server's full option list is not published yet.
+The public `bifrost-lsp --help` output lists the supported command-line forms:
+
+```text
+bifrost-lsp [--root PATH] [--lsp | --server lsp]
+
+Utilities:
+  pack-engine-profile  Print the exact linked engine profile as JSON
+  --version            Print the standalone server version
+```
+
+`--lsp` is accepted as a compatibility spelling; the standalone server does
+not need it when launched by an editor.
 
 ### Environment Variables
 

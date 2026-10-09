@@ -38,18 +38,20 @@ Bifrost languages below.
 
 | Mode | Binary the extension starts |
 | --- | --- |
-| `auto` (default) | `bifrost.serverPath`, if you set it to a value other than `bifrost`. Otherwise the managed binary, if a compatible one is installed or you accept the install prompt. Otherwise a local development build. Otherwise `bifrost` on `PATH`. |
+| `auto` (default) | A configured `bifrost.serverPath` other than the default command names `bifrost` and `bifrost-lsp`; otherwise the managed binary, if available or installed; otherwise the newer local `bifrost-lsp` development build; otherwise `bifrost-lsp` on `PATH`. |
 | `bundled` | The managed binary only. If no compatible managed binary is installed, the extension asks to install it and fails if you decline. |
-| `path` | `bifrost.serverPath`, if you set it to a value other than `bifrost`. Otherwise a local development build. Otherwise `bifrost` on `PATH`. |
+| `path` | The exact value of `bifrost.serverPath`. It does not fall back to a managed binary or local development build; a command name is still resolved on `PATH`. |
 
-A local development build is `target/debug/bifrost` or
-`target/release/bifrost` two directories above the extension's own folder. The
-extension uses the newer of the two. This applies only when you run the
-extension from a source checkout.
+A local development build is `target/debug/bifrost-lsp` or
+`target/release/bifrost-lsp` at the repository root, two directories above the
+extension's own folder. The extension uses the newer of the two. This applies
+only when you run the extension from a source checkout.
 
-In version 0.12.0, the default `bifrost.serverPath` value `bifrost` names the
-Bifrost CLI, which no longer serves LSP. In `path` mode, set
-`bifrost.serverPath` to the absolute path of a `bifrost-lsp` binary.
+In version 0.12.0, the manifest default for `bifrost.serverPath` is
+`bifrost-lsp`. `auto` mode also treats the legacy `bifrost` value as a default
+command name and selects the standalone server. In `path` mode, the extension
+uses the configured value verbatim, so set `bifrost.serverPath` to the absolute
+path or `PATH` command name of a `bifrost-lsp` binary.
 
 ### Managed Binary
 
@@ -73,7 +75,7 @@ In `auto` and `bundled` mode, the extension manages its own server binary:
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `bifrost.launchMode` | `auto`, `bundled`, or `path` | `auto` | How to choose the server binary. See [Launch Modes](#launch-modes). |
-| `bifrost.serverPath` | string | `bifrost` | Path to the server binary, or a command name to find on `PATH`. |
+| `bifrost.serverPath` | string | `bifrost-lsp` | Path to the server binary, or a command name to find on `PATH`. In `path` mode, use `bifrost-lsp`; `auto` mode also recognizes the legacy `bifrost` value as a compatibility sentinel. |
 | `bifrost.debug` | boolean | `false` | Log every LSP request and notification. The extension passes this to the server as `BIFROST_LSP_DEBUG`. |
 | `bifrost.slowRequestMs` | number, minimum `0` | `2000` | Log LSP requests and notifications that take at least this many milliseconds. The extension passes this to the server as `BIFROST_LSP_SLOW_MS`. |
 | `bifrost.extraArgs` | array of strings | `[]` | Extra command-line arguments, added after `--root <workspace-root>`. Blank entries are dropped. |
