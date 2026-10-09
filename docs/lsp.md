@@ -21,7 +21,7 @@ language server is a separate program named `bifrost-lsp`. It comes from the
 `bifrost-lsp` server gives you two working options:
 
 - In VS Code or Cursor, use the extension's managed `bifrost-lsp` v0.1.1
-  download when using extension version 0.12.0. See [VS Code LSP](./vscode.md).
+  download when using extension version 0.12.1. See [VS Code LSP](./vscode.md).
 - In another editor, start the `bifrost-lsp` v0.1.1 binary with
   `bifrost-lsp --root <workspace-root>`.
 
@@ -93,7 +93,7 @@ Three version numbers are independent of each other:
 
 | Version | Where it comes from | Current value in the bifrost-lsp source |
 | --- | --- | --- |
-| Extension version | The VS Code extension's `version` | `0.12.0` |
+| Extension version | The VS Code extension's `version` | `0.12.1` |
 | Server version | The `bifrost-lsp` release tag, `v<server>` | Preferred `0.1.1`, minimum `0.1.1` |
 | Engine version | The Bifrost analysis engine built into `bifrost-lsp` | The extension accepts `>=0.13.0 <0.14.0` |
 

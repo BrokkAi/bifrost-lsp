@@ -6,7 +6,7 @@ standalone Bifrost language server. It contains the independent Rust
 the extension and its release workflows. The extension remains published as
 `brokk/bifrost-vscode` on Open VSX.
 
-The current published extension release from this repository is `0.12.0`.
+The current extension version from this repository is `0.12.1`.
 Extension versions, standalone server versions,
 and compatible Bifrost engine versions are intentionally independent. Release
 qualification injects the server version and SHA-256 hashes into the VSIX.

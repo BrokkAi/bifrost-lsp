@@ -10,7 +10,7 @@ language for structural `query_code` searches.
 > [!CAUTION]
 > **Most RQL features need the language server**
 > Bifrost built after release 0.12.0 does not serve LSP, and the new `bifrost-lsp`
-> server v0.1.1 is released. Extension version 0.12.0 downloads and runs it.
+> server v0.1.1 is released. Extension version 0.12.1 downloads and runs it.
 > See [LSP Server](./lsp.md) and
 > [VS Code LSP](./vscode.md).
 
