@@ -6,8 +6,8 @@ standalone Bifrost language server. It contains the independent Rust
 the extension and its release workflows. The extension remains published as
 `brokk/bifrost-vscode` on Open VSX.
 
-The first extension release from this repository is `0.12.0`, following the
-currently published `0.11.4`. Extension versions, standalone server versions,
+The current published extension release from this repository is `0.12.0`.
+Extension versions, standalone server versions,
 and compatible Bifrost engine versions are intentionally independent. Release
 qualification injects the server version and SHA-256 hashes into the VSIX.
 Extension releases use self-describing
@@ -15,6 +15,16 @@ Extension releases use self-describing
 exactly match the committed manifest.
 
 See [RELEASING.md](RELEASING.md) for qualification and external setup.
+
+## Documentation
+
+- [LSP Server](docs/lsp.md): server releases, startup, and compatibility.
+- [VS Code LSP](docs/vscode.md): install and configure the VS Code extension.
+- [RQL in VS Code](docs/rql-vscode.md): write queries and policies in VS Code.
+- [Zed LSP](docs/zed.md): status of Zed language-server support and the
+  unpublished scaffold in [`editors/zed`](editors/zed/).
+- [Neovim and Vim LSP](docs/neovim.md): configure Neovim and Vim clients.
+- [Helix LSP](docs/helix.md): configure the Helix language-server client.
 
 Open semantic packs and policies come from
 [BrokkAi/bifrost-packs](https://github.com/BrokkAi/bifrost-packs). The server
