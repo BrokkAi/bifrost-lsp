@@ -13,6 +13,21 @@
       "include": "#strings"
     },
     {
+      "name": "meta.value-type-predicate.bifrost-rql-policy",
+      "match": "(\\()(intrinsic)(\\s+)(bool)(?=\\s*\\))",
+      "captures": {
+        "1": {
+          "name": "punctuation.section.brackets.bifrost-rql-policy"
+        },
+        "2": {
+          "name": "entity.name.function.record.bifrost-rql-policy"
+        },
+        "4": {
+          "name": "support.type.primitive.bifrost-rql-policy"
+        }
+      }
+    },
+    {
       "name": "entity.name.function.record.bifrost-rql-policy",
       "match": "(?<=\\()[a-z][a-z0-9-]*(?=$|[\\s)])"
     },
