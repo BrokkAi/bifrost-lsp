@@ -69,3 +69,8 @@
         :receiver-type type.widget
         :proof exact)
       (call-argument :over calls :formal-name "timeout")))
+
+; Value-type barriers are policy syntax; the native RQL grammar is unchanged.
+:barriers (endpoint-set :entries [
+  (barrier :id boolean :value-type (intrinsic bool))
+  (barrier :id fieldless :value-type (enum :fieldless true))])
