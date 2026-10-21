@@ -516,3 +516,13 @@ void test("highlights dependency configuration correlation", async () => {
   assertScoped(tokens, '"app.properties"', "string.quoted.double.bifrost-rql");
   assertScoped(tokens, "false", "constant.language.boolean.bifrost-rql");
 });
+
+void test("highlights Rust marker impl query forms", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    "(rust-marker-impls-of (language rust (class))) " +
+      "(rust_marker_impls_of (language rust (class)))"
+  );
+  assertScoped(tokens, "rust-marker-impls-of", "support.function.wrapper.bifrost-rql");
+  assertScoped(tokens, "rust_marker_impls_of", "support.function.wrapper.bifrost-rql");
+});
