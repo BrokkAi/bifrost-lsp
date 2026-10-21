@@ -516,3 +516,18 @@ void test("highlights dependency configuration correlation", async () => {
   assertScoped(tokens, '"app.properties"', "string.quoted.double.bifrost-rql");
   assertScoped(tokens, "false", "constant.language.boolean.bifrost-rql");
 });
+
+void test("highlights Rust unsafe call context in callee provenance queries", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    `(filter :where ((callee_provenance eq caller_supplied))
+      (call-shape (language rust (call :unsafe-context true))))
+     (call_shape (language rust (call :unsafe_context false)))`
+  );
+  assertScoped(tokens, "call-shape", "support.function.wrapper.bifrost-rql");
+  assertScoped(tokens, "call_shape", "support.function.wrapper.bifrost-rql");
+  assertScoped(tokens, ":unsafe-context", "variable.parameter.role.bifrost-rql");
+  assertScoped(tokens, ":unsafe_context", "variable.parameter.role.bifrost-rql");
+  assertScoped(tokens, "true", "constant.language.boolean.bifrost-rql");
+  assertScoped(tokens, "false", "constant.language.boolean.bifrost-rql");
+});
