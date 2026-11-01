@@ -32,7 +32,7 @@ Release and the SHA-256 pinned into this extension package before extracting
 the binary; it also checks `bifrost-lsp --version` before starting the server.
 
 For the full installation, upgrade, troubleshooting, and exact-workspace smoke
-procedure, see the [Cursor integration guide](https://bifrost.brokk.ai/cursor/).
+procedure, see the [Cursor LSP guide](../../docs/cursor.md).
 
 ## Configuration
 

@@ -20,6 +20,7 @@ See [RELEASING.md](RELEASING.md) for qualification and external setup.
 
 - [LSP Server](docs/lsp.md): server releases, startup, and compatibility.
 - [VS Code LSP](docs/vscode.md): install and configure the VS Code extension.
+- [Cursor LSP](docs/cursor.md): install, upgrade and validate the extension in Cursor.
 - [RQL in VS Code](docs/rql-vscode.md): write queries and policies in VS Code.
 - [Zed LSP](docs/zed.md): status of Zed language-server support and the
   unpublished scaffold in [`editors/zed`](editors/zed/).
