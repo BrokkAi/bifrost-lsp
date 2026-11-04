@@ -201,6 +201,21 @@ void test("tokenizes nested RQL structure, literals, and incomplete input", asyn
   assert.deepEqual(unknown?.scopes, [scopeName]);
 });
 
+void test("highlights the callable parameter and direct member roles", async () => {
+  const tokens = tokenizeGrammar(await grammar(), "(callable :parameters []) (class :members [])");
+  assertScoped(tokens, ":parameters", "variable.parameter.role.bifrost-rql");
+  assertScoped(tokens, ":members", "variable.parameter.role.bifrost-rql");
+});
+
+void test("highlights the count field and predicate forms", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    "(method :count [:parameters (parameter) :min 3]) (class :and [(count :members (constructor) :max 0)])"
+  );
+  assertScoped(tokens, ":count", "variable.parameter.role.bifrost-rql");
+  assertScoped(tokens, "count", "support.function.predicate.bifrost-rql");
+});
+
 void test("highlights registered underscore predicate aliases", async () => {
   const tokens = tokenizeGrammar(
     await grammar(),
