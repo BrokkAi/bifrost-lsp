@@ -201,6 +201,12 @@ void test("tokenizes nested RQL structure, literals, and incomplete input", asyn
   assert.deepEqual(unknown?.scopes, [scopeName]);
 });
 
+void test("highlights the callable parameter and direct member roles", async () => {
+  const tokens = tokenizeGrammar(await grammar(), "(callable :parameters []) (class :members [])");
+  assertScoped(tokens, ":parameters", "variable.parameter.role.bifrost-rql");
+  assertScoped(tokens, ":members", "variable.parameter.role.bifrost-rql");
+});
+
 void test("highlights registered underscore predicate aliases", async () => {
   const tokens = tokenizeGrammar(
     await grammar(),
