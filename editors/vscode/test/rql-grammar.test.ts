@@ -216,6 +216,22 @@ void test("highlights registered underscore predicate aliases", async () => {
   assertScoped(tokens, "false", "constant.language.boolean.bifrost-rql");
 });
 
+void test("highlights target declaration name predicates and regex forms", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    '(target-declaration-name "Customer") (target_declaration_name "Customer") (target-declaration-name/regex "Cust.*") (target_declaration_name/regex "Cust.*")'
+  );
+  for (const spelling of [
+    "target-declaration-name",
+    "target_declaration_name",
+    "target-declaration-name/regex",
+    "target_declaration_name/regex"
+  ]) {
+    assertScoped(tokens, spelling, "support.function.predicate.bifrost-rql");
+  }
+  assertScoped(tokens, "Cust.*", "string.regexp.bifrost-rql");
+});
+
 void test("highlights explain and profile execution controls", async () => {
   const tokens = tokenizeGrammar(await grammar(), "(explain (class)) (profile (call))");
   assertScoped(tokens, "explain", "support.function.wrapper.bifrost-rql");
