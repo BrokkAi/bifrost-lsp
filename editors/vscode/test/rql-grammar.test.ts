@@ -516,3 +516,14 @@ void test("highlights dependency configuration correlation", async () => {
   assertScoped(tokens, '"app.properties"', "string.quoted.double.bifrost-rql");
   assertScoped(tokens, "false", "constant.language.boolean.bifrost-rql");
 });
+
+void test("highlights call reachability and its ordinary plan arguments", async () => {
+  const tokens = tokenizeGrammar(
+    await grammar(),
+    '(call-reachability :sources (function :name "root") :sinks (call :callee (name "sink")) :depth 2)'
+  );
+  assertScoped(tokens, "call-reachability", "support.function.wrapper.bifrost-rql");
+  for (const option of [":sources", ":sinks", ":depth"]) {
+    assertScoped(tokens, option, "variable.parameter.role.bifrost-rql");
+  }
+});
